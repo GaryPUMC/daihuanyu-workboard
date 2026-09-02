@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="privacy">【隐私】仅粘贴 AI 已生成的结构化文本；小程序不会向 AI 发送患者资料。</view>
+  <view class="card">
+    <view class="title">第一步：生成结构化文本</view>
+    <view class="note">当前工作科室：{{activeDepartment}}。将提示词复制到你已获授权使用的 AI，再把其完整 JSON 返回文本粘贴回来。</view>
+    <view class="copy-button" bindtap="copyPrompt">复制 AI 提示词</view>
+  </view>
+  <view class="card">
+    <view class="title">第二步：粘贴并解析</view>
+    <textarea class="input" value="{{inputText}}" placeholder="粘贴 AI 返回的完整 JSON" maxlength="-1" bindinput="inputText" />
+    <view class="actions"><view class="secondary" bindtap="clearImport">清空</view><view class="primary" bindtap="parseText">解析拟入院患者</view></view>
+    <view wx:if="{{parseError}}" class="error">{{parseError}}</view>
+    <view wx:if="{{resultText}}" class="result">{{resultText}}</view>
+  </view>
+  <view wx:if="{{summary}}" class="summary">共 {{summary.total}} 位；可导入 {{summary.ready}} 位；不可导入 {{summary.blocked}} 位</view>
+  <view wx:for="{{candidates}}" wx:key="candidateId" class="candidate {{item.statusTone}}">
+    <view class="candidate-top"><view>{{item.index}}. {{item.locationLabel}}　{{item.patient.name || '未识别姓名'}}</view><view class="status">{{item.statusLabel}}</view></view>
+    <view class="details">住院号：{{item.patient.id || '未识别'}}　·　{{item.patient.gender || '未识别'}}　·　主刀：{{item.patient.surgeon || '未识别'}}</view>
+    <view class="details">{{item.admissionLabel}}：{{item.patient.admissionDate || '未识别'}}　·　{{item.patient.ward || '未分配病房'}}　·　科室：{{item.patient.department || '未识别'}}</view>
+    <view wx:if="{{item.errorText}}" class="error">{{item.errorText}}</view>
+    <view wx:if="{{item.warningText}}" class="warning">{{item.warningText}}</view>
+    <view wx:if="{{item.statusTone !== 'done'}}" class="edit" data-id="{{item.candidateId}}" bindtap="openEditor">人工编辑字段</view>
+    <view wx:if="{{!item.errors.length}}" class="select {{item.selected ? 'selected' : ''}}" data-id="{{item.candidateId}}" bindtap="toggleCandidate">{{item.selectedLabel}}（点击切换）</view>
+  </view>
+  <view wx:if="{{candidates.length}}" class="confirm" bindtap="confirmImport">确认录入已纳入患者</view>
+  <wb-dialog visible="{{dialog.visible}}" title="{{dialog.title}}" message="{{dialog.message}}" confirm-text="{{dialog.confirmText}}" cancel-text="{{dialog.cancelText}}" show-cancel="{{dialog.showCancel}}" tone="{{dialog.tone}}" loading="{{dialog.loading}}" bindcancel="closeDialog" bindconfirm="confirmDialog" />
+</view>

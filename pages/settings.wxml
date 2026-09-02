@@ -1,0 +1,41 @@
+<view class="page">
+  <view class="hero"><view class="hero-title">工作板设置</view><view class="hero-desc">维护轮转科室、术式、任务字典与本地数据安全。所有修改默认只保存在当前设备。</view></view>
+
+  <view class="section-title">病房与床号</view>
+  <view class="ward-card">
+    <view class="ward-card-head"><view><view class="ward-title">病房显示规则</view><view class="ward-desc">配置两个及以上病房后，患者资料、AI 导入和各工作列表会显示“病房 · 床号”。</view></view><view class="ward-badge">{{wards.length > 1 ? '多病房' : '单病房'}}</view></view>
+    <picker mode="selector" range="{{departments}}" value="{{wardDepartmentIndex}}" bindchange="chooseWardDepartment"><view class="ward-picker">科室：{{wardDepartment}}　›</view></picker>
+    <view class="ward-chips"><view wx:for="{{wards}}" wx:key="*this" class="ward-chip"><text>{{item}}</text><text wx:if="{{wards.length > 1}}" class="ward-remove" data-ward="{{item}}" bindtap="removeWard">×</text></view></view>
+    <view class="ward-note">{{wards.length > 1 ? '多病房科室必须为新患者选择病房；缺病房显示“病房待分配”，缺床号显示“床位待分配”。' : '单病房科室默认隐藏病房选择，只显示床号；缺床号显示“床位待分配”。'}}</view>
+    <view class="add-row ward-add"><input placeholder="添加病房，如：综合一" value="{{wardInput}}" bindinput="inputWard" /><view bindtap="addWard">添加</view></view>
+  </view>
+
+  <view class="section-title">查房快捷操作</view>
+  <view class="card"><view class="card-desc">查房页一键加入患者今日待办；术后重点仅保留引流相关操作。</view><view class="chips"><view wx:for="{{roundActions}}" wx:key="id" class="chip"><text>{{item.title}}</text><text class="remove" data-id="{{item.id}}" bindtap="removeRoundAction">×</text></view></view><view class="add-row"><input placeholder="添加快捷操作" value="{{roundActionInput}}" bindinput="inputRoundAction" /><view bindtap="addRoundAction">添加</view></view></view>
+
+  <block wx:for="{{sections}}" wx:for-item="section" wx:key="key">
+    <view class="section-title">{{section.title}}</view>
+    <view class="card"><view class="card-desc">{{section.desc}}</view><view class="chips"><view wx:for="{{section.items}}" wx:for-item="option" wx:key="*this" class="chip"><text>{{option}}</text><text wx:if="{{option !== '未选择术式'}}" class="remove" data-category="{{section.key}}" data-value="{{option}}" bindtap="remove">×</text></view></view><view class="add-row"><input placeholder="{{section.placeholder}}" data-category="{{section.key}}" value="{{inputs[section.key]}}" bindinput="inputSetting" /><view data-category="{{section.key}}" bindtap="add">添加</view></view></view>
+  </block>
+
+  <view class="section-title">加密备份与恢复</view>
+  <view class="backup-card">
+    <view class="card-desc">备份文件包含敏感数据，使用密码加密。生成后会立即回读校验；导入旧版资料会先在本机校验并迁移，恢复前自动保留当前数据快照。</view>
+    <input class="password" password placeholder="输入至少 8 位备份密码" value="{{backupPassword}}" bindinput="inputPassword" />
+    <view class="backup-summary">当前：在院 {{backupSummary.activePatients}} 人 · 归档 {{backupSummary.archivedPatients}} 人 · 查房 {{backupSummary.rounds}} 条 · 回收站 {{backupSummary.revokedPatients}} 条</view>
+    <view wx:if="{{backupSummary.lastBackupVerification}}" class="backup-verified">最近校验：{{backupSummary.lastBackupVerification.at.slice(0, 10)}} · {{backupSummary.lastBackupVerification.kind === 'export' ? '本次生成备份' : '选择文件'}}</view>
+    <view class="backup-actions"><view bindtap="exportBackup">生成并校验</view><view class="secondary" bindtap="verifyBackup">校验备份</view></view>
+    <view class="backup-actions restore-action"><view class="secondary" bindtap="importBackup">从备份恢复</view></view>
+    <view wx:if="{{restoreSnapshot}}" class="restore-snapshot"><view>可回退：{{restoreSnapshot.savedAtText || '恢复前自动快照'}} · 在院 {{restoreSnapshot.activePatients}} 人</view><view bindtap="restorePreviousWorkspace">回退到此快照</view></view>
+    <view wx:if="{{backupPath}}" class="share" bindtap="shareBackup">备份已生成，确认后打开文件分享界面 ›</view>
+  </view>
+  <view class="section-title">撤销建档回收站</view>
+  <view class="card recycle-card">
+    <view class="card-desc">临时取消或误建档会保留在本机回收站，可恢复患者及关联记录；出院患者不可撤销建档。</view>
+    <view wx:for="{{revokedRegistrations}}" wx:key="id" class="recycle-row"><view><view class="recycle-name">{{item.patient.ward ? item.patient.ward + ' · ' : ''}}{{item.patient.bed || '未填'}}床　{{item.patient.name || '未命名'}}</view><view class="recycle-meta">{{item.patient.id}} · {{item.revokedAtText}} · {{item.recordCount}} 条关联记录</view></view><view class="recycle-restore {{item.restorable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="restoreRevokedRegistration">{{item.restorable ? '恢复' : '号码冲突'}}</view></view>
+    <view wx:if="{{revokedRegistrations.length === 0}}" class="recycle-empty">暂无可恢复的撤销建档记录</view>
+  </view>
+  <view class="privacy">【隐私】真实 AI 尚未联网。完整患者资料不会发送给外部 API，小程序内也不保存 API 密钥。</view>
+  <view class="icp">京ICP备2026050622号</view>
+  <wb-dialog visible="{{dialog.visible}}" title="{{dialog.title}}" message="{{dialog.message}}" confirm-text="{{dialog.confirmText}}" cancel-text="{{dialog.cancelText}}" show-cancel="{{dialog.showCancel}}" tone="{{dialog.tone}}" loading="{{dialog.loading}}" bindcancel="closeDialog" bindconfirm="confirmDialog" />
+</view>

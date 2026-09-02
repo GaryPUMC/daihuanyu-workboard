@@ -1,0 +1,24 @@
+<root-portal wx:if="{{visible}}">
+  <view class="sheet-mask" catchtouchmove="blockBackgroundTouch" catchtap="handleMaskTap">
+    <view class="sheet-card {{keyboardHeight > 0 ? 'keyboard-open' : ''}}" style="bottom: {{keyboardHeight}}px; max-height: calc(100vh - {{keyboardHeight}}px - 80rpx);" catchtap="stopPropagation">
+      <view class="sheet-header">
+        <view class="sheet-title">{{title}}</view>
+        <view wx:if="{{description}}" class="sheet-description">{{description}}</view>
+      </view>
+      <scroll-view class="sheet-body" scroll-y enhanced enable-flex show-scrollbar="{{false}}" scroll-into-view="{{scrollIntoView}}" scroll-with-animation="{{false}}">
+        <slot></slot>
+      </scroll-view>
+      <view wx:if="{{discardPending}}" class="sheet-discard">当前修改尚未保存，确定放弃吗？</view>
+      <view class="sheet-footer {{keyboardHeight > 0 ? 'keyboard-open' : ''}}">
+        <view wx:if="{{!discardPending}}" class="sheet-action-touch" bindtap="requestCancel">
+          <view class="sheet-action-visual sheet-cancel">{{cancelText}}</view>
+        </view>
+        <view wx:if="{{!discardPending}}" class="sheet-action-touch" bindtap="requestConfirm">
+          <view class="sheet-action-visual sheet-confirm {{loading ? 'disabled' : ''}}">{{loading ? '处理中…' : confirmText}}</view>
+        </view>
+        <view wx:if="{{discardPending}}" class="sheet-action-touch" bindtap="continueEditing"><view class="sheet-action-visual sheet-cancel">继续编辑</view></view>
+        <view wx:if="{{discardPending}}" class="sheet-action-touch" bindtap="discardChanges"><view class="sheet-action-visual sheet-danger">放弃修改</view></view>
+      </view>
+    </view>
+  </view>
+</root-portal>

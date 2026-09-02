@@ -1,0 +1,23 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/patients/patients",
+    "pages/admission-import/admission-import",
+    "pages/admission-candidate-edit/admission-candidate-edit",
+    "pages/patient-detail/patient-detail",
+    "pages/rounds/rounds",
+    "pages/settings"
+  ],
+  "window": {
+    "navigationBarTitleText": "代寰宇的工作板",
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#F5F6F8",
+    "backgroundColor": "#F5F6F8"
+  },
+  "usingComponents": {
+    "wb-dialog": "/components/wb-dialog/wb-dialog",
+    "wb-sheet": "/components/wb-sheet/wb-sheet"
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

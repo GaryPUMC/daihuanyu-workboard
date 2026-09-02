@@ -1,0 +1,8 @@
+page {
+  background: #f5f6f8;
+  color: #172033;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+}
+
+button::after { border: 0; }
+input, textarea { color: #172033; }

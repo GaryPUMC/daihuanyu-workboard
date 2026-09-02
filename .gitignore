@@ -1,0 +1,21 @@
+# macOS metadata
+.DS_Store
+
+# WeChat Developer Tools local settings
+project.private.config.json
+
+# Local dependencies, editor state, and temporary files
+node_modules/
+.idea/
+.vscode/
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+
+# Local-only data and backup exports
+local-data/
+backups/
+*.dhwb
+!releases/**/*.dhwb

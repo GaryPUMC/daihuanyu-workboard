@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="notice"><text>【隐私】患者资料默认显示全名，仅保存在本机</text><view bindtap="togglePrivacy">{{privacyVisible ? '开启脱敏' : '显示全名'}}</view></view>
+  <view class="heading"><view><view class="title">查房工作板</view><view class="subtitle">引流重点 {{drainPatientCount}} 人 · 全部在院 {{allPatientCount}} 人</view></view><view class="setting" bindtap="goSettings">管理操作</view></view>
+  <view class="round-tabs"><view class="round-tab {{viewMode === 'drain' ? 'selected' : ''}}" data-mode="drain" bindtap="selectViewMode">引流重点</view><view class="round-tab {{viewMode === 'all' ? 'selected' : ''}}" data-mode="all" bindtap="selectViewMode">全部在院</view></view>
+
+  <view class="patient-card {{item.genderClass}} {{item.patientTypeClass}}" wx:for="{{patients}}" wx:key="id" data-id="{{item.id}}" bindtap="goPatient">
+    <view class="patient-top"><view class="patient-labels"><text class="bed">{{item.locationLabel}}</text><text class="patient-type {{item.patientTypeClass}}">{{item.patientType}}</text></view><view class="stage">{{item.careStatus}}</view></view>
+    <view class="patient-name"><text class="name">{{item.displayName}}</text><text class="age">{{item.ageSex}}</text></view>
+    <view class="staff-primary"><view class="surgeon-primary"><text>主刀</text>{{item.surgeon || '未填写'}}</view><view wx:if="{{item.firstAssistant}}" class="assistant-secondary"><text>一助</text>{{item.firstAssistant}}</view></view>
+    <view class="round-focus"><text class="round-pod">{{item.podText || 'POD 待核对'}}</text><text class="round-drain">{{item.drainText}}</text></view>
+    <view wx:if="{{item.hasTodayRound}}" class="round-summary">今日查房：{{item.roundSummary}}</view>
+    <view class="meta">{{item.department}}　·　{{item.openTaskCount}} 项未完成</view>
+    <view class="round-record" data-patient-id="{{item.id}}" catchtap="openRoundEditor">{{item.hasTodayRound ? '修改今日查房' : '＋ 记录今日查房'}}</view>
+    <view class="action-title">一键加入待办</view>
+    <view class="actions"><view wx:for="{{item.actions}}" wx:for-item="action" wx:key="id" class="action" data-patient-id="{{item.id}}" data-action-id="{{action.id}}" catchtap="addAction">＋ {{action.title}}</view></view>
+  </view>
+  <view wx:if="{{patients.length === 0}}" class="empty">{{viewMode === 'drain' ? '暂无需要记录引流的在院患者' : '当前科室暂无在院患者'}}</view>
+  <wb-sheet visible="{{roundEditor.visible}}" title="{{roundEditor.patientName}} · 今日查房" description="{{roundEditor.date}} · 直接输入文字，不限定格式与长度；当天可再次打开更正。" confirm-text="保存查房" keyboard-height="{{editorKeyboardHeight}}" loading="{{roundSaveBusy}}" dirty="{{roundEditor.dirty}}" bindcancel="closeRoundEditor" bindconfirm="saveRoundEditor">
+    <view class="round-editor-field"><textarea data-field="content" value="{{roundEditor.content}}" placeholder="记录今日查房内容" maxlength="-1" focus="{{roundEditor.focus}}" adjust-position="false" bindinput="inputRoundEditor" bindkeyboardheightchange="editorKeyboardChange" /></view>
+  </wb-sheet>
+</view>

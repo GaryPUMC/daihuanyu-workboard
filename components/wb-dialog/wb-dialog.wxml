@@ -1,0 +1,19 @@
+<root-portal wx:if="{{visible}}">
+  <view class="dialog-mask" catchtouchmove="blockBackgroundTouch" catchtap="handleMaskTap">
+    <view class="dialog-card dialog-{{tone}}" catchtap="stopPropagation">
+      <view class="dialog-title">{{title}}</view>
+      <scroll-view class="dialog-body" scroll-y enhanced show-scrollbar="{{false}}">
+        <text wx:if="{{message}}" class="dialog-message" user-select="{{selectable}}">{{message}}</text>
+        <slot></slot>
+      </scroll-view>
+      <view class="dialog-footer">
+        <view wx:if="{{showCancel}}" class="dialog-action-touch" bindtap="requestCancel">
+          <view class="dialog-action-visual dialog-cancel">{{cancelText}}</view>
+        </view>
+        <view class="dialog-action-touch" bindtap="requestConfirm">
+          <view class="dialog-action-visual dialog-confirm {{loading ? 'disabled' : ''}}">{{loading ? '处理中…' : confirmText}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</root-portal>
