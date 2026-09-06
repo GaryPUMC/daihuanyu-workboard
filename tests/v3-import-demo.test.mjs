@@ -16,7 +16,7 @@ const sourceWorkspace = createV3ImportDemo();
 const imported = store.prepareBackupImport(sourceWorkspace);
 
 assert.equal(imported.sourceSchemaVersion, 3);
-assert.equal(imported.targetSchemaVersion, 11);
+assert.equal(imported.targetSchemaVersion, 13);
 assert.equal(imported.migrated, true);
 assert.equal(imported.workspace.patients.length, 10);
 assert.equal(imported.workspace.devices.length, 9);
@@ -74,12 +74,35 @@ assert.equal(store.addDepartmentWard('骨科', '综合二').ok, true);
 assert.deepEqual(store.getDepartmentWards('骨科', store.getWorkspace().settings), ['综合一', '综合二']);
 assert.match(store.createPatient({ id: 'ward-missing', name: '脱敏病房患者', patientType: '普通', admissionState: 'admitted', ward: '', bed: '12', gender: '男', department: '骨科', admissionDate: '2026-08-08', surgeon: '脱敏主刀' }).error, /该科室有多个病房，请手动选择病房/);
 assert.equal(store.createPatient({ id: 'ward-valid', name: '脱敏病房患者', patientType: '普通', admissionState: 'admitted', ward: '综合一', bed: '12', gender: '男', department: '骨科', admissionDate: '2026-08-08', surgeon: '脱敏主刀' }).ok, true);
+assert.equal(store.moveDepartmentWard('骨科', '综合二', 'up'), true);
+assert.deepEqual(store.getDepartmentWards('骨科', store.getWorkspace().settings), ['综合二', '综合一']);
+assert.equal(store.getPatient('ward-valid').ward, '综合一');
+assert.equal(store.moveDepartmentWard('骨科', '综合二', 'up'), false);
+assert.equal(store.moveDepartmentWard('骨科', '不存在病房', 'down'), false);
+
+// 科室排序只改变各选择器的显示次序，不改当前科室、患者归属或病房映射。
+const beforeDepartmentMove = store.getWorkspace();
+const departmentsBeforeMove = [...beforeDepartmentMove.settings.departments];
+const activeDepartmentBeforeMove = beforeDepartmentMove.settings.activeDepartment;
+const wardsBeforeMove = structuredClone(beforeDepartmentMove.settings.departmentWards);
+const movedDepartment = departmentsBeforeMove[1];
+assert.equal(store.moveDepartment(movedDepartment, 'up'), true);
+assert.deepEqual(store.getWorkspace().settings.departments, [movedDepartment, departmentsBeforeMove[0], ...departmentsBeforeMove.slice(2)]);
+assert.equal(store.getWorkspace().settings.activeDepartment, activeDepartmentBeforeMove);
+assert.deepEqual(store.getWorkspace().settings.departmentWards, wardsBeforeMove);
+assert.equal(store.getPatient('ward-valid').department, '骨科');
+assert.equal(store.moveDepartment(movedDepartment, 'up'), false);
+assert.equal(store.moveDepartment('不存在科室', 'down'), false);
+
+// 恢复仅含自定义科室的旧数据时，当前科室必须落在有效列表中。
+const customDepartmentRestore = store.prepareBackupImport({ schemaVersion: 13, settings: { activeDepartment: '不存在科室', departments: ['胸外科'] }, patients: [] });
+assert.equal(customDepartmentRestore.workspace.settings.activeDepartment, '胸外科');
 
 // 旧引流字段和已拔除记录继续兼容，手术日/POD 只作为日期信息。
 const legacyDrainWorkspace = {
   schemaVersion: 8,
   settings: { activeDepartment: '整形外科' },
-  patients: [{ id: 'LEGACY-DRAIN-001', name: '脱敏旧患者', bed: '9', gender: '男', department: '整形外科', admissionDate: '2026-08-01', surgeryDate: '2026-08-02', stage: '入院', legacyDrainPresent: true }],
+  patients: [{ id: 'LEGACY-TUBE-001', name: '脱敏旧患者', bed: '9', gender: '男', department: '整形外科', admissionDate: '2026-08-01', surgeryDate: '2026-08-02', stage: '入院', legacyDrainPresent: true }],
   archivedPatients: [], rounds: [], tasks: [], taskDrafts: [], templates: [], stageLogs: [], clinicalEvents: [], pathologySpecimens: [], observations: [],
 };
 const legacyDrain = store.prepareBackupImport(legacyDrainWorkspace);
@@ -95,7 +118,7 @@ assert.equal(store.revokePatientRegistration(targetId).ok, true);
 const revoked = store.getRevokedRegistrations().find((entry) => entry.patient.id === targetId);
 assert.equal(store.restoreRevokedRegistration(revoked.id).ok, true);
 const backup = structuredClone(store.getWorkspace());
-assert.equal(store.restoreWorkspace(backup).schemaVersion, 11);
+assert.equal(store.restoreWorkspace(backup).schemaVersion, 13);
 assert.equal(store.getRestoreSnapshotSummary().activePatients, backup.patients.length);
 assert.equal(store.restorePreviousWorkspace().ok, true);
 assert.equal(store.getWorkspaceIntegrity().ok, true);

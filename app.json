@@ -5,7 +5,9 @@
     "pages/admission-import/admission-import",
     "pages/admission-candidate-edit/admission-candidate-edit",
     "pages/patient-detail/patient-detail",
+    "pages/medical-records/medical-records",
     "pages/rounds/rounds",
+    "pages/department-manager/department-manager",
     "pages/settings"
   ],
   "window": {

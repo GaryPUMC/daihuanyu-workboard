@@ -9,14 +9,14 @@ const importer = await import(`data:text/javascript;base64,${Buffer.from(source)
 const today = '2026-08-09';
 const options = { today, activeDepartment: '整形外科', departments: ['整形外科', '骨科'], existingPatients: [{ id: 'EXISTS-001' }] };
 
-const prompt = importer.getAdmissionImportPrompt(today);
-assert.match(prompt, /本次处理日期：2026-08-09（北京时间）/);
-assert.match(prompt, /无法确认时必须为空字符串/);
-assert.match(prompt, /不得只根据日期推断入院状态/);
-assert.match(prompt, /待入院患者未分配床位时/);
-assert.match(prompt, /admissionState/);
-assert.match(prompt, /若材料明确写有“X术”/);
-assert.match(prompt, /不得使用中文引号/);
+const importGuide = importer.getAdmissionImportGuide(today);
+assert.match(importGuide, /本次处理日期：2026-08-09（北京时间）/);
+assert.match(importGuide, /无法确认时必须为空字符串/);
+assert.match(importGuide, /不得只根据日期推断入院状态/);
+assert.match(importGuide, /待入院患者未分配床位时/);
+assert.match(importGuide, /admissionState/);
+assert.match(importGuide, /若材料明确写有“X术”/);
+assert.match(importGuide, /不得使用中文引号/);
 
 const valid = importer.parseAdmissionImport(JSON.stringify({
   schema: importer.ADMISSION_IMPORT_SCHEMA,

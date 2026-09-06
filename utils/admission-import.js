@@ -2,7 +2,7 @@ import { patientDraftErrorText, validatePatientDraft } from './patient-draft';
 
 export const ADMISSION_IMPORT_SCHEMA = 'workboard-admission-import/v1';
 
-export const ADMISSION_IMPORT_PROMPT = `你是“代寰宇的工作板”的入院信息结构化助手。请仅从我提供的材料中提取拟入院或已入院患者信息；其他信息不得猜测、补全、推断或给出诊疗建议。
+export const ADMISSION_IMPORT_GUIDE = `入院资料整理要求：请仅从提供的材料中提取拟入院或已入院患者信息；其他信息不得猜测、补全、推断或给出诊疗建议。
 
 本次处理日期：{{TODAY_BEIJING}}（北京时间）。“今日”仅指该日期；“当月”仅指该日期所在月份。
 
@@ -43,8 +43,8 @@ export const ADMISSION_IMPORT_PROMPT = `你是“代寰宇的工作板”的入�
 6. department 必须使用材料中的名称；没有明确科室时返回空字符串。
 7. 不得输出身份证号、手机号、住址、完整病历、治疗建议或任何未列出的字段。`;
 
-export function getAdmissionImportPrompt(today) {
-  return ADMISSION_IMPORT_PROMPT.replace('{{TODAY_BEIJING}}', text(today) || 'YYYY-MM-DD');
+export function getAdmissionImportGuide(today) {
+  return ADMISSION_IMPORT_GUIDE.replace('{{TODAY_BEIJING}}', text(today) || 'YYYY-MM-DD');
 }
 
 function text(value) {
@@ -124,7 +124,7 @@ export function parseAdmissionImport(textValue, options = {}) {
   try {
     parsed = JSON.parse(removeCodeFence(textValue));
   } catch (error) {
-    return { ok: false, error: '无法识别 JSON，请使用“复制提示词”生成的原样结构化文本', candidates: [] };
+    return { ok: false, error: '无法识别 JSON，请按“复制整理格式”准备完整结构化文本', candidates: [] };
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, error: '导入文本必须是一个 JSON 对象', candidates: [] };
   if (parsed.schema !== ADMISSION_IMPORT_SCHEMA) return { ok: false, error: `schema 必须为 ${ADMISSION_IMPORT_SCHEMA}`, candidates: [] };

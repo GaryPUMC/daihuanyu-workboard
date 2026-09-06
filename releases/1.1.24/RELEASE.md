@@ -25,4 +25,4 @@
 - SHA-256：`57b433eaf2b2e81f947b30225f6fb620a7bcf4de9411eb41745dd5371e9928ee`
 - 排除：`releases/`、`project.private.config.json`、`.DS_Store`、本地数据和备份文件
 
-本小程序不提供AI服务。
+数据仅在当前设备处理和保存。

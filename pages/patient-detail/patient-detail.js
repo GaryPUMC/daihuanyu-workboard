@@ -1,7 +1,7 @@
 import {
   addClinicalEvent, addDrain, addSettingItem, addTask, archivePatient, confirmSurgeryName, dischargePatient,
   formatBeijingDateTime, getDepartmentWards, getPatient, getPatientBundle, getPOD, getPrivacyMaskEnabled, getWorkspace, isDrainPeriod, isIntraoperativeOrLater, maskPatient,
-  ensureDrainRowCount, recordDrainVolume, removeDrain, revertPatientDischarge, revokePatientRegistration, setPreopCheck, setPrivacyMaskEnabled, setTaskDone, todayKey, updatePatient,
+  ensureDrainRowCount, recordDrainVolume, removeDrain, revertPatientDischarge, revokePatientRegistration, setPrivacyMaskEnabled, setTaskDone, todayKey, updatePatient,
 } from '../../utils/workspace-store';
 import { createDialog, emptyDialog } from '../../utils/ui-state';
 import { preparePatientDraft, validatePatientDraft } from '../../utils/patient-draft';
@@ -10,13 +10,6 @@ const CUSTOM_PROCEDURE_OPTION = '＋ 自定义新术式';
 const CUSTOM_ASSISTANT_OPTION = '其他（手动填写）';
 const ALLERGY_OPTIONS = [
   { value: 'unknown', label: '未核实' }, { value: 'none', label: '无' }, { value: 'present', label: '有' },
-];
-const PREOP_CHECKS = [
-  { key: 'surgeryNameConfirmed', title: '与主刀确认正式术式', requiresSurgeryNameConfirm: true },
-  { key: 'consentSigned', title: '核查手术同意书等已签署' },
-  { key: 'testsReviewed', title: '核查术前检查已完善并打印化验单' },
-  { key: 'historySigned', title: '核查入院病史已签字' },
-  { key: 'photosCompleted', title: '完成术前拍照' },
 ];
 const EVENT_LABELS = { 'drain-status': '引流', 'patient-revision': '资料修改' };
 const VALUE_LABELS = { active: '在位', removed: '已拔除' };
@@ -101,10 +94,7 @@ function buildDrainTable(patient, currentPod) {
 function completeAppointmentTask(patientId, type) {
   const labelMap = { photo: '拍照预约文本', radiotherapy: '放疗预约文本', 'surgery-summary': 'PPT 患者信息模板' };
   if (!labelMap[type]) return false;
-  const eventSaved = addClinicalEvent(patientId, `cooperation-${type}`, `已复制${labelMap[type]}`).ok;
-  if (type === 'surgery-summary') return eventSaved;
-  if (type === 'photo') return setPreopCheck(patientId, 'photosCompleted', true).ok && eventSaved;
-  return eventSaved;
+  return addClinicalEvent(patientId, `cooperation-${type}`, `已复制${labelMap[type]}`).ok;
 }
 
 Page({
@@ -138,17 +128,20 @@ Page({
       return { ...item, typeLabel: EVENT_LABELS[item.type], valueLabel: `${item.note ? `${item.note} · ` : ''}${statusText}`, timeText: formatBeijingDateTime(item.at) };
     });
     const revisionEvents = (original.clinicalEvents || []).filter((item) => item.type === 'patient-revision').sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5).map((item) => ({ ...item, timeText: formatBeijingDateTime(item.at) }));
-    const preopChecks = original.department === '整形外科' ? PREOP_CHECKS.map((check) => ({ ...check, done: Boolean(original.preopChecks && original.preopChecks[check.key]) })) : [];
+    const surgeryConfirmation = original.department === '整形外科' ? {
+      done: Boolean(original.confirmedSurgeryName && original.surgeryNameConfirmedAt),
+      confirmedSurgeryName: original.confirmedSurgeryName || '',
+    } : null;
     const appointmentTypes = original.archived ? [] : [
       ...(original.department === '整形外科' && !original.actualDischargeDate ? [
-      { type: 'photo', title: '生成拍照预约文本', desc: '手术日期为明日时可复制；复制后自行核对并发送', done: (original.clinicalEvents || []).some((item) => item.type === 'cooperation-photo') || Boolean(original.preopChecks && original.preopChecks.photosCompleted) },
+      { type: 'photo', title: '生成拍照预约文本', desc: '手术日期为明日时可复制；复制后自行核对并发送', done: (original.clinicalEvents || []).some((item) => item.type === 'cooperation-photo') },
       { type: 'surgery-summary', title: '生成 PPT 患者信息模板', desc: original.surgeryNameConfirmedAt && original.confirmedSurgeryName ? '简略姓名与已确认术式' : '完成主刀术式确认后可生成', done: (original.clinicalEvents || []).some((item) => item.type === 'cooperation-surgery-summary' || item.type === 'ppt-copy') },
       ...(isRadiotherapySchedule(original) ? [{ type: 'radiotherapy', title: '生成放疗预约文本', desc: original.patientType === '日间' ? '日间手术当日可复制；复制后自行核对并发送' : '明日手术可复制；复制后自行核对并发送', done: (original.clinicalEvents || []).some((item) => item.type === 'cooperation-radiotherapy') }] : []),
       ] : []),
       ...(original.actualDischargeDate ? [{ type: 'discharge-notice', title: '生成出院通知', desc: '请预览复制并自行发送；通知一助后再标记完成', done: (original.clinicalEvents || []).some((item) => item.type === 'cooperation-discharge-notice') }] : []),
     ];
     this.setData({
-      patient: { ...displayPatient, rounds, tasks, generalTasks: tasks, preopChecks, surgeryNameConfirmed: Boolean(original.surgeryNameConfirmedAt), confirmedSurgeryName: original.confirmedSurgeryName || '', podText: pod === null ? '' : pod < 0 ? `术前 ${Math.abs(pod)} 天` : `POD ${pod}` },
+      patient: { ...displayPatient, rounds, tasks, generalTasks: tasks, surgeryConfirmation, surgeryNameConfirmed: Boolean(original.confirmedSurgeryName && original.surgeryNameConfirmedAt), confirmedSurgeryName: original.confirmedSurgeryName || '', podText: pod === null ? '' : pod < 0 ? `术前 ${Math.abs(pod)} 天` : `POD ${pod}` },
       archived: original.archived, intraoperative, postoperative, drains, drainTable, intraopAssistantOptions, intraopAssistantIndex, clinicalEvents, revisionEvents, appointmentTypes,
       dischargeDateInput: original.actualDischargeDate || (original.patientType === '日间' ? original.admissionDate : todayKey()),
       taskCategories: workspace.settings.taskCategories, taskCategoryIndex: Math.max(0, workspace.settings.taskCategories.indexOf(this.data.taskCategories[this.data.taskCategoryIndex]) >= 0 ? workspace.settings.taskCategories.indexOf(this.data.taskCategories[this.data.taskCategoryIndex]) : workspace.settings.taskCategories.indexOf('其他')),
@@ -339,17 +332,8 @@ Page({
     wx.showToast({ title: done ? '已完成' : '已恢复待办', icon: 'success' });
     this.loadPatient();
   },
-  togglePreopCheck(e) {
-    if (this.data.archived || this.data.patient.careStatus === '已出院') return;
-    const key = e.currentTarget.dataset.key;
-    const check = this.data.patient.preopChecks.find((item) => item.key === key);
-    if (!check) return;
-    if (check.requiresSurgeryNameConfirm) return this.openSurgeryNameConfirm();
-    const result = setPreopCheck(this.patientId, key, !check.done);
-    if (!result.ok) return wx.showToast({ title: result.error, icon: 'none' });
-    this.loadPatient();
-  },
   openSurgeryNameConfirm() {
+    if (this.data.archived || !this.data.patient || this.data.patient.careStatus === '已出院') return;
     const patient = getPatient(this.patientId);
     if (!patient) return;
     this.openEditor({ kind: 'surgery-confirm', title: '与主刀确认正式术式', description: '此核查独立留痕，不改变患者事实状态，也不阻断其他操作。', placeholder: '填写确认后的正式手术名称', content: patient.confirmedSurgeryName || patient.surgeryName || '', confirmText: '确认保存' });

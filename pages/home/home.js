@@ -1,4 +1,4 @@
-import { getActiveTasks, getDischargeReadiness, getPrivacyMaskEnabled, getWorkspace, getPOD, maskPatient, setActiveDepartment, setPrivacyMaskEnabled, setTaskDone, taskBucket, todayKey } from '../../utils/workspace-store';
+import { getActiveTasks, getDischargeReadiness, getMedicalRecordBoard, getPrivacyMaskEnabled, getWorkspace, getPOD, maskPatient, setActiveDepartment, setPrivacyMaskEnabled, setTaskDone, taskBucket, todayKey } from '../../utils/workspace-store';
 import { createDialog, emptyDialog } from '../../utils/ui-state';
 
 function todayLabel() {
@@ -126,7 +126,7 @@ Page({
     today: '', privacyVisible: true,
     navTop: 24, navHeight: 44, navRightPadding: 24,
     totalPatients: 0, preAdmissionCount: 0, dischargedCount: 0, taskGroups: [], patientSummary: [], preAdmissionSummary: [], dischargedPatients: [], dischargeFollowups: [], departments: [], departmentIndex: 0, activeDepartment: '',
-    overview: { urgent: 0, overdue: 0, today: 0, upcoming: 0 }, todayPhotoCount: 0, todayPptCount: 0, todayRadiotherapyCount: 0, roundDrainCount: 0, dialog: emptyDialog(),
+    overview: { urgent: 0, overdue: 0, today: 0, upcoming: 0 }, medicalRecordSummary: { pending: 0, severe: 0, overdue: 0, today: 0, dischargeWindow: 0 }, todayPhotoCount: 0, todayPptCount: 0, todayRadiotherapyCount: 0, roundDrainCount: 0, dialog: emptyDialog(),
   },
   onLoad() {
     this.setData(getHomeNavMetrics());
@@ -187,8 +187,9 @@ Page({
     const photo = collectTodayCooperation(workspace, activeDepartment, 'photo', date);
     const ppt = collectTodayCooperation(workspace, activeDepartment, 'ppt', date);
     const radiotherapy = collectTodayCooperation(workspace, activeDepartment, 'radiotherapy', date);
+    const medicalRecordSummary = getMedicalRecordBoard(date, workspace, activeDepartment).summary;
     const roundDrainCount = activePatients.filter((patient) => workspace.devices.some((device) => device.patientId === patient.id && device.type === 'drain' && device.status === 'active')).length;
-    this.setData({ today: todayLabel(), totalPatients: activePatients.length, preAdmissionCount: preAdmissionPatients.length, dischargedCount: dischargedPatients.length, taskGroups, patientSummary, preAdmissionSummary, dischargedPatients: dischargedSummary, dischargeFollowups, overview, todayPhotoCount: photo.readyCount, todayPptCount: ppt.readyCount, todayRadiotherapyCount: radiotherapy.readyCount, roundDrainCount, departments: workspace.settings.departments, departmentIndex: Math.max(0, workspace.settings.departments.indexOf(activeDepartment)), activeDepartment });
+    this.setData({ today: todayLabel(), totalPatients: activePatients.length, preAdmissionCount: preAdmissionPatients.length, dischargedCount: dischargedPatients.length, taskGroups, patientSummary, preAdmissionSummary, dischargedPatients: dischargedSummary, dischargeFollowups, overview, medicalRecordSummary, todayPhotoCount: photo.readyCount, todayPptCount: ppt.readyCount, todayRadiotherapyCount: radiotherapy.readyCount, roundDrainCount, departments: workspace.settings.departments, departmentIndex: Math.max(0, workspace.settings.departments.indexOf(activeDepartment)), activeDepartment });
   },
   chooseDepartment(e) {
     const department = this.data.departments[Number(e.detail.value)];
@@ -231,6 +232,7 @@ Page({
   goPatients() { wx.navigateTo({ url: '/pages/patients/patients' }); },
   goPatient(e) { wx.navigateTo({ url: `/pages/patient-detail/patient-detail?id=${encodeURIComponent(e.currentTarget.dataset.id)}` }); },
   openTaskPatient(e) { this.goPatient(e); },
+  goMedicalRecords() { wx.navigateTo({ url: '/pages/medical-records/medical-records' }); },
   goRounds() { wx.navigateTo({ url: '/pages/rounds/rounds' }); },
   goSettings() { wx.navigateTo({ url: '/pages/settings' }); },
 });

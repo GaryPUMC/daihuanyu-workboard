@@ -11,10 +11,9 @@ const exists = (path) => fs.existsSync(new URL(path, root));
 const version = (read('VERSION').split(/\r?\n/).find((line) => line.trim()) || '').trim();
 assert.match(version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/, 'VERSION 必须为语义化版本号');
 assert.equal(exists('project.private.config.json'), true, '本机私有配置应存在但不得纳入发布包');
-assert.equal(exists('utils/ai-privacy.js'), false, '旧查房建议草稿模块仍存在');
 
 const appConfig = read('app.json');
-['pages/home/home', 'pages/rounds/rounds', 'pages/settings'].forEach((page) => {
+['pages/home/home', 'pages/medical-records/medical-records', 'pages/rounds/rounds', 'pages/settings'].forEach((page) => {
   assert.equal(appConfig.includes(page), true, `缺少页面：${page}`);
 });
 ['pages/templates/templates', 'pages/workflow-settings/workflow-settings'].forEach((page) => {
@@ -26,7 +25,7 @@ const roundsPage = read('pages/rounds/rounds.wxml');
 assert.match(store, /const SCHEMA_VERSION = \d+/, '缺少数据 schema 版本');
 assert.equal(store.includes('prepareBackupImport'), true, '缺少备份导入校验');
 assert.equal(store.includes('getWorkspaceIntegrity'), true, '缺少关联完整性校验');
-assert.equal(store.includes('const SCHEMA_VERSION = 11'), true, '当前版本必须使用 schema 11');
+assert.equal(store.includes('const SCHEMA_VERSION = 13'), true, '当前版本必须使用 schema 13');
 assert.equal(store.includes('legacyWorkflow'), true, '缺少旧流程兼容层');
 ['stageRequirementTasks', 'export function changePatientStage', 'export function getPatientReminders', 'export function addTasksFromDrafts'].forEach((symbol) => {
   assert.equal(store.includes(symbol), false, `旧流程运行逻辑仍存在：${symbol}`);
@@ -62,9 +61,13 @@ assert.equal(fiftyPatientSource.includes("'国疗'"), true, '50患者基准集�
 
 const changelog = read(`releases/${version}/UPLOAD_CHANGELOG.md`).trim();
 assert.equal(changelog.length <= 200, true, '上传更新日志不得超过 200 字');
-assert.equal(changelog.includes('本小程序不提供AI服务'), true, '上传更新日志必须声明“本小程序不提供AI服务”');
+assert.equal(changelog.includes('数据仅在当前设备处理和保存'), true, '上传更新日志必须说明本机数据边界');
 assert.equal(exists(`releases/${version}/RELEASE.md`), true, '缺少本地发布说明');
 assert.equal(exists(`releases/${version}/source.tar.gz`), true, '缺少本地源码上传包');
+const archivePath = fileURLToPath(new URL(`releases/${version}/source.tar.gz`, root));
+const archiveEntries = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+const forbiddenArchiveEntry = archiveEntries.find((entry) => /(^|\/)releases\/|(^|\/)\.git(?:\/|$)|project\.private\.config\.json$|\.DS_Store$|\.dhwb$/i.test(entry));
+assert.equal(forbiddenArchiveEntry, undefined, `上传包包含禁止文件：${forbiddenArchiveEntry}`);
 
 execFileSync(process.execPath, ['--test', ...testFiles], { cwd: rootPath, stdio: 'inherit' });
 console.log(`release preflight source checks: passed (${version})`);

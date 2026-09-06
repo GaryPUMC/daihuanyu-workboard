@@ -44,10 +44,9 @@
   </view>
   <view wx:if="{{revisionEvents.length}}" class="revision-card"><view class="revision-title">最近资料修改</view><view class="revision-note">自动留痕，不要求填写修改理由</view><view wx:for="{{revisionEvents}}" wx:key="id" class="revision-row"><view class="revision-time">{{item.timeText}}</view><view class="revision-detail">{{item.note}}</view></view></view>
 
-  <view wx:if="{{patient.preopChecks.length}}" class="heading"><view class="section-title">术前核查</view><view class="task-count">独立记录，不推进流程</view></view>
-  <view wx:if="{{patient.preopChecks.length}}" class="checklist-card">
-    <view class="checklist-item" wx:for="{{patient.preopChecks}}" wx:key="key" data-key="{{item.key}}" bindtap="togglePreopCheck"><view class="check {{item.done ? 'checked' : ''}}">{{item.done ? '✓' : ''}}</view><view><view class="checklist-title {{item.done ? 'done' : ''}}">{{item.title}}</view><view wx:if="{{item.requiresSurgeryNameConfirm}}" class="confirm-task-note">{{patient.confirmedSurgeryName ? '正式术式：' + patient.confirmedSurgeryName : '点击录入确认后的正式术式名称'}}</view></view></view>
-    <view class="photo-note">术前拍照仅记录“是否完成”，暂不在小程序中保存照片；具体拍摄要求待后续补充。</view>
+  <view wx:if="{{patient.surgeryConfirmation}}" class="heading"><view class="section-title">术前核查</view><view class="task-count">仅记录正式术式确认，不推进流程</view></view>
+  <view wx:if="{{patient.surgeryConfirmation}}" class="checklist-card">
+    <view class="checklist-item" bindtap="openSurgeryNameConfirm"><view class="check {{patient.surgeryConfirmation.done ? 'checked' : ''}}">{{patient.surgeryConfirmation.done ? '✓' : ''}}</view><view><view class="checklist-title {{patient.surgeryConfirmation.done ? 'done' : ''}}">与主刀确认正式术式</view><view class="confirm-task-note">{{patient.surgeryConfirmation.confirmedSurgeryName ? '正式术式：' + patient.surgeryConfirmation.confirmedSurgeryName : '点击录入确认后的正式术式名称'}}</view></view></view>
   </view>
 
   <view wx:if="{{appointmentTypes.length}}" class="heading"><view class="section-title">协作文本</view><view class="task-count">仅复制，不自动发送</view></view>

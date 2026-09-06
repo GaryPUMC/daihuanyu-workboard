@@ -33,6 +33,20 @@ assert.equal(store.getWorkspaceIntegrity().ok, true);
 const activePatients = store.getWorkspace().patients;
 const dischargedPatients = activePatients.filter((patient) => store.getPatientStatus(patient) === '已出院');
 assert.equal(dischargedPatients.length, 6);
+const workspace = store.getWorkspace();
+const medicalRecordBoards = workspace.settings.departments.map((department) => (
+  store.getMedicalRecordBoard(undefined, workspace, department)
+));
+assert.equal(
+  medicalRecordBoards.reduce((total, board) => total + board.patients.length, 0),
+  activePatients.filter((patient) => patient.surgeryDate).length,
+  '病历提醒表应覆盖全部已登记手术日期的未归档患者'
+);
+assert.equal(
+  medicalRecordBoards.every((board) => board.podColumns.length >= 5),
+  true,
+  '每个科室的提醒表都应包含基础POD列'
+);
 assert.equal(store.getActiveTasks().every((task) => store.getPatientStatus(store.getPatient(task.patientId)) !== '已出院'), true);
 assert.equal(store.getPatientBundle('QA-BENCH-001').rounds.length > 0, true);
 assert.equal('stageLogs' in store.getPatientBundle('QA-BENCH-007'), false);

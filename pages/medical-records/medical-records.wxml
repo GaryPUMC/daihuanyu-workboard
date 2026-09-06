@@ -1,0 +1,39 @@
+<view class="page">
+  <view class="privacy-strip" bindtap="togglePrivacy"><view><view class="privacy-title">【隐私】患者姓名显示</view><view class="privacy-state">{{privacyVisible ? '当前显示全名' : '当前已脱敏'}}</view></view><view class="privacy-action">{{privacyVisible ? '开启脱敏' : '显示全名'}}</view></view>
+
+  <view class="heading"><view><view class="title">病历书写提醒</view><view class="subtitle">{{activeDepartment}} · {{today}}</view></view><view class="pending-total">{{summary.pending}} 格待处理</view></view>
+
+  <view class="summary-panel {{summary.severe ? 'has-severe' : ''}}">
+    <view wx:if="{{summary.pending}}" class="summary-primary">{{summary.pending}} 格尚未确认</view>
+    <view wx:else class="summary-primary">当前均已确认</view>
+    <view class="summary-items"><text>严重逾期 {{summary.severe}}</text><text>全部逾期 {{summary.overdue}}</text><text>今日 {{summary.today}}</text><text>出院窗口 {{summary.dischargeWindow}}</text></view>
+  </view>
+
+  <view class="view-tabs"><view class="view-tab {{viewMode === 'active' ? 'selected' : ''}}" data-mode="active" bindtap="selectViewMode">在院患者</view><view class="view-tab {{viewMode === 'pending' ? 'selected' : ''}}" data-mode="pending" bindtap="selectViewMode">仅看未写</view><view class="view-tab {{viewMode === 'discharged' ? 'selected' : ''}}" data-mode="discharged" bindtap="selectViewMode">出院待补</view></view>
+
+  <view class="notice">未点击仅表示本机尚未确认，不代表院内病历一定缺失；请以院内正式病历为准。</view>
+
+  <scroll-view wx:if="{{patients.length}}" class="record-scroll" scroll-x="true" enhanced="true" show-scrollbar="true">
+    <view class="record-table" style="width: {{tableWidth}}rpx;">
+      <view class="record-row header-row">
+        <view class="patient-column header-cell">患者</view>
+        <view class="pod-column header-cell" wx:for="{{podColumns}}" wx:key="*this">POD{{item}}</view>
+        <view class="discharge-column header-cell">出院</view>
+      </view>
+      <view class="record-row" wx:for="{{patients}}" wx:for-item="patient" wx:key="id">
+        <view class="patient-column patient-cell {{patient.maxOverdueDays >= 7 ? 'severe-patient' : ''}}"><view class="patient-location">{{patient.locationLabel}}</view><view class="patient-name">{{patient.displayName}}</view><view class="patient-pod">{{patient.podText}}</view></view>
+        <view wx:for="{{patient.podCells}}" wx:for-item="cell" wx:key="requirementKey" class="pod-column body-cell">
+          <view class="record-cell {{cell.status}} {{cell.actionable ? 'actionable' : ''}}" data-patient-id="{{patient.id}}" data-requirement-key="{{cell.requirementKey}}" data-done="{{cell.done}}" data-actionable="{{cell.actionable}}" bindtap="toggleRequirement"><text class="cell-date">{{cell.dateLabel}}</text><text class="cell-status">{{cell.statusText}}</text></view>
+        </view>
+        <view class="discharge-column body-cell">
+          <view class="record-cell discharge-cell {{patient.dischargeCell.status}} {{patient.dischargeCell.actionable ? 'actionable' : ''}}" data-patient-id="{{patient.id}}" data-requirement-key="{{patient.dischargeCell.requirementKey}}" data-done="{{patient.dischargeCell.done}}" data-actionable="{{patient.dischargeCell.actionable}}" bindtap="toggleRequirement"><text class="cell-date">{{patient.dischargeCell.dateLabel}}</text><text class="cell-status">{{patient.dischargeCell.statusText}}</text></view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{patients.length === 0}}" class="empty">{{viewMode === 'discharged' ? '暂无出院后待补病历' : viewMode === 'pending' ? '当前没有待处理病历' : '当前科室暂无术后在院患者'}}</view>
+
+  <view class="legend"><view><text class="legend-swatch severe"></text>严重逾期≥7天</view><view><text class="legend-swatch warning"></text>一般逾期</view><view><text class="legend-swatch today"></text>今日应写</view><view><text class="legend-swatch window"></text>出院窗口</view><view><text class="legend-swatch done"></text>已经完成</view></view>
+  <view class="operation-note">直接点击红、橙、蓝或紫色格即可完成；绿色格再次点击可撤销。“随POD”表示该次病历同时满足出院要求。</view>
+</view>

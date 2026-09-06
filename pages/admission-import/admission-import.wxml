@@ -1,13 +1,13 @@
 <view class="page">
-  <view class="privacy">【隐私】仅粘贴 AI 已生成的结构化文本；小程序不会向 AI 发送患者资料。</view>
+  <view class="privacy">【隐私】仅粘贴已整理的结构化文本；内容只在本机解析和保存。</view>
   <view class="card">
-    <view class="title">第一步：生成结构化文本</view>
-    <view class="note">当前工作科室：{{activeDepartment}}。将提示词复制到你已获授权使用的 AI，再把其完整 JSON 返回文本粘贴回来。</view>
-    <view class="copy-button" bindtap="copyPrompt">复制 AI 提示词</view>
+    <view class="title">第一步：准备结构化文本</view>
+    <view class="note">当前工作科室：{{activeDepartment}}。复制整理格式，按格式准备完整 JSON 后粘贴回来。</view>
+    <view class="copy-button" bindtap="copyImportGuide">复制整理格式</view>
   </view>
   <view class="card">
     <view class="title">第二步：粘贴并解析</view>
-    <textarea class="input" value="{{inputText}}" placeholder="粘贴 AI 返回的完整 JSON" maxlength="-1" bindinput="inputText" />
+    <textarea class="input" value="{{inputText}}" placeholder="粘贴完整 JSON" maxlength="-1" bindinput="inputText" />
     <view class="actions"><view class="secondary" bindtap="clearImport">清空</view><view class="primary" bindtap="parseText">解析拟入院患者</view></view>
     <view wx:if="{{parseError}}" class="error">{{parseError}}</view>
     <view wx:if="{{resultText}}" class="result">{{resultText}}</view>

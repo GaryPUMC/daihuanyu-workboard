@@ -1,9 +1,9 @@
-import { addDepartmentWard, addRoundActionTemplate, addSettingItem, formatBeijingDateTime, getBackupSummary, getDepartmentWards, getRestoreSnapshotSummary, getRevokedRegistrations, getWorkspace, prepareBackupImport, recordBackupVerification, removeDepartmentWard, removeRoundActionTemplate, removeSettingItem, restorePreviousWorkspace, restoreRevokedRegistration, restoreWorkspace } from '../utils/workspace-store';
+import { addRoundActionTemplate, addSettingItem, formatBeijingDateTime, getBackupSummary, getRestoreSnapshotSummary, getRevokedRegistrations, getWorkspace, prepareBackupImport, recordBackupVerification, removeRoundActionTemplate, removeSettingItem, restorePreviousWorkspace, restoreRevokedRegistration, restoreWorkspace, todayKey } from '../utils/workspace-store';
+import { getDatedBackupFileName } from '../utils/backup-name';
 import { decryptBackup, encryptBackup } from '../utils/secure-backup';
 import { createDialog, emptyDialog } from '../utils/ui-state';
 
 const sectionDefinitions = [
-  { key: 'departments', title: '轮转科室', desc: '用于患者归属与首页科室切换。', placeholder: '添加科室' },
   { key: 'procedures', title: '术式', desc: '用于患者建档、编辑与正式术式核对。', placeholder: '添加术式' },
   { key: 'diagnoses', title: '诊断常用词', desc: '为后续快速录入预留的常用诊断简称。', placeholder: '添加诊断简称' },
   { key: 'taskCategories', title: '任务分类', desc: '用于患者详情中新增待办时的分类选择。', placeholder: '添加任务分类' },
@@ -11,21 +11,19 @@ const sectionDefinitions = [
 
 Page({
   data: {
-    sections: [], departments: [], inputs: {}, roundActions: [], roundActionInput: '', wardDepartmentIndex: 0, wardDepartment: '', wards: [], wardInput: '', backupPassword: '', backupPath: '', backupSummary: {}, restoreSnapshot: null, revokedRegistrations: [], dialog: emptyDialog(),
+    sections: [], inputs: {}, roundActions: [], roundActionInput: '', backupPassword: '', backupPath: '', backupFileName: '', backupSummary: {}, restoreSnapshot: null, revokedRegistrations: [], dialog: emptyDialog(),
   },
   onShow() { this.loadSettings(); },
   loadSettings() {
     const workspace = getWorkspace();
     const sections = sectionDefinitions.map((section) => ({ ...section, items: workspace.settings[section.key] || [] }));
-    const wardDepartment = workspace.settings.departments.includes(this.data.wardDepartment) ? this.data.wardDepartment : workspace.settings.activeDepartment;
-    const wardDepartmentIndex = Math.max(0, workspace.settings.departments.indexOf(wardDepartment));
     const revokedRegistrations = getRevokedRegistrations().map((item) => ({
       ...item,
       revokedAtText: formatBeijingDateTime(item.revokedAt),
       recordCount: Object.values(item.records || {}).reduce((count, records) => count + (records || []).length, 0),
     }));
     const restoreSnapshot = getRestoreSnapshotSummary();
-    this.setData({ sections, departments: workspace.settings.departments, roundActions: workspace.settings.roundActionTemplates || [], wardDepartment, wardDepartmentIndex, wards: getDepartmentWards(wardDepartment, workspace.settings), backupSummary: getBackupSummary(workspace), restoreSnapshot: restoreSnapshot && !restoreSnapshot.invalid ? { ...restoreSnapshot, savedAtText: formatBeijingDateTime(restoreSnapshot.savedAt) } : null, revokedRegistrations });
+    this.setData({ sections, roundActions: workspace.settings.roundActionTemplates || [], backupSummary: getBackupSummary(workspace), restoreSnapshot: restoreSnapshot && !restoreSnapshot.invalid ? { ...restoreSnapshot, savedAtText: formatBeijingDateTime(restoreSnapshot.savedAt) } : null, revokedRegistrations });
   },
   openDialog(config) { wx.hideKeyboard({ complete: () => this.setData({ dialog: createDialog(config) }) }); },
   showInfo(title, message, tone = 'default') { this.openDialog({ title, message, tone, confirmText: '知道了', showCancel: false, action: 'dismiss' }); },
@@ -38,22 +36,7 @@ Page({
   inputSetting(e) { this.setData({ [`inputs.${e.currentTarget.dataset.category}`]: e.detail.value }); },
   inputPassword(e) { this.setData({ backupPassword: e.detail.value }); },
   inputRoundAction(e) { this.setData({ roundActionInput: e.detail.value }); },
-  inputWard(e) { this.setData({ wardInput: e.detail.value }); },
-  chooseWardDepartment(e) {
-    const workspace = getWorkspace();
-    const wardDepartment = workspace.settings.departments[Number(e.detail.value)] || '';
-    this.setData({ wardDepartment, wardInput: '' }, () => this.loadSettings());
-  },
-  addWard() {
-    const result = addDepartmentWard(this.data.wardDepartment, this.data.wardInput.trim());
-    if (!result.ok) return wx.showToast({ title: result.error, icon: 'none' });
-    this.setData({ wardInput: '' });
-    this.loadSettings();
-  },
-  removeWard(e) {
-    const ward = e.currentTarget.dataset.ward;
-    this.openDialog({ title: '移除病房？', message: `“${ward}”不再用于新建或导入。已有患者不会被自动改动。`, confirmText: '移除', tone: 'danger', action: 'remove-ward', payload: { ward } });
-  },
+  goDepartmentManager() { wx.navigateTo({ url: '/pages/department-manager/department-manager' }); },
   addRoundAction() {
     const title = this.data.roundActionInput.trim();
     if (!title) return wx.showToast({ title: '请输入操作名称', icon: 'none' });
@@ -74,8 +57,6 @@ Page({
   },
   remove(e) {
     const { category, value } = e.currentTarget.dataset;
-    const section = this.data.sections.find((item) => item.key === category);
-    if (category === 'departments' && section.items.length <= 1) return wx.showToast({ title: '请至少保留一个项目', icon: 'none' });
     if (category === 'procedures' && value === '未选择术式') return;
     this.openDialog({ title: '确认移除？', message: `“${value}”将不再出现在新建选项中，已有患者资料不会改变。`, confirmText: '移除', tone: 'danger', action: 'remove-setting', payload: { category, value } });
   },
@@ -91,7 +72,7 @@ Page({
   },
   shareBackup() {
     if (!this.data.backupPath) return;
-    this.openDialog({ title: '离开本机前再次确认', message: '下一步会打开微信文件分享界面，但不会自动发送。备份已加密，仍应只保存到你本人控制的位置。', confirmText: '打开分享', tone: 'privacy', action: 'share-backup', payload: { filePath: this.data.backupPath } });
+    this.openDialog({ title: '离开本机前再次确认', message: '下一步会打开微信文件分享界面，但不会自动发送。备份已加密，仍应只保存到你本人控制的位置。', confirmText: '打开分享', tone: 'privacy', action: 'share-backup', payload: { filePath: this.data.backupPath, fileName: this.data.backupFileName } });
   },
   importBackup() {
     const password = this.data.backupPassword;
@@ -109,10 +90,9 @@ Page({
     if (action === 'choose-import-backup') { this.finishDialog(); return this.chooseBackupForImport(payload.password); }
     if (action === 'share-backup') {
       this.finishDialog();
-      return wx.shareFileMessage({ filePath: payload.filePath, fileName: '代寰宇的工作板加密备份.dhwb', fail: () => wx.showToast({ title: '当前环境不支持文件分享', icon: 'none' }) });
+      return wx.shareFileMessage({ filePath: payload.filePath, fileName: payload.fileName, fail: () => wx.showToast({ title: '当前环境不支持文件分享', icon: 'none' }) });
     }
     let result = { ok: true };
-    if (action === 'remove-ward') result = removeDepartmentWard(this.data.wardDepartment, payload.ward);
     if (action === 'remove-round-action') removeRoundActionTemplate(payload.id);
     if (action === 'remove-setting') result = removeSettingItem(payload.category, payload.value);
     if (action === 'restore-previous') result = restorePreviousWorkspace();
@@ -139,10 +119,11 @@ Page({
     try {
       const content = await encryptBackup(getWorkspace(), password);
       const verified = decryptBackup(content, password);
+      const backupFileName = getDatedBackupFileName(todayKey());
       const filePath = `${wx.env.USER_DATA_PATH}/工作板备份-${Date.now()}.dhwb`;
       wx.getFileSystemManager().writeFileSync(filePath, content, 'utf8');
       recordBackupVerification('export', getBackupSummary(verified));
-      this.setData({ backupPath: filePath });
+      this.setData({ backupPath: filePath, backupFileName });
       this.loadSettings();
       wx.showToast({ title: '备份已生成并校验', icon: 'success' });
     } catch (error) {

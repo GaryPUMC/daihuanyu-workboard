@@ -1,0 +1,34 @@
+<view class="page">
+  <view class="hero"><view class="hero-title">科室管理</view><view class="hero-desc">维护首页与建档中的科室顺序，以及各科室的病房配置。</view></view>
+
+  <view class="tabs"><view class="tab {{activeTab === 'departments' ? 'active' : ''}}" data-tab="departments" bindtap="selectTab">科室</view><view class="tab {{activeTab === 'wards' ? 'active' : ''}}" data-tab="wards" bindtap="selectTab">病房</view></view>
+
+  <block wx:if="{{activeTab === 'departments'}}">
+    <view class="info-card"><text class="info-icon">i</text><text>排序只影响选择器显示，不会改变患者归属。</text></view>
+    <view class="section-title">显示顺序</view>
+    <view class="manager-card">
+      <view wx:for="{{departmentRows}}" wx:key="name" class="department-row">
+        <view class="order-number">{{item.number}}</view>
+        <view class="department-name"><text>{{item.name}}</text><text wx:if="{{item.isActive}}" class="active-badge">当前工作科室</text><text wx:if="{{!item.isActive && item.usageText !== '无关联患者'}}" class="usage-note">{{item.usageText}}</text></view>
+        <view class="row-actions"><view class="move-action {{item.canMoveUp ? '' : 'disabled'}}" data-department="{{item.name}}" data-direction="up" bindtap="move">↑</view><view class="move-action {{item.canMoveDown ? '' : 'disabled'}}" data-department="{{item.name}}" data-direction="down" bindtap="move">↓</view><view class="archive-action {{item.canArchive ? '' : 'disabled'}}" data-department="{{item.name}}" data-active="{{item.isActive}}" bindtap="archiveDepartment">归档</view><view class="remove-action" data-department="{{item.name}}" data-active="{{item.isActive}}" data-source="active" bindtap="removeDepartment">×</view></view>
+      </view>
+    </view>
+    <view class="add-row"><input placeholder="添加科室" value="{{departmentInput}}" bindinput="inputDepartment" /><view bindtap="addDepartment">添加</view></view>
+    <view class="page-note">当前工作科室及已有患者归属不会因排序而改变。</view>
+    <view wx:if="{{archivedDepartmentRows.length}}" class="archive-heading">已归档科室</view>
+    <view wx:if="{{archivedDepartmentRows.length}}" class="manager-card archived-card"><view wx:for="{{archivedDepartmentRows}}" wx:key="name" class="department-row archived-row"><view class="department-name"><text>{{item.name}}</text><text class="archive-badge">已归档</text><text wx:if="{{item.usageText !== '无关联患者'}}" class="usage-note">{{item.usageText}}</text></view><view class="row-actions"><view class="restore-action" data-department="{{item.name}}" bindtap="restoreArchivedDepartment">恢复</view><view class="remove-action" data-department="{{item.name}}" data-source="archived" bindtap="removeDepartment">×</view></view></view></view>
+  </block>
+
+  <block wx:if="{{activeTab === 'wards'}}">
+    <view class="section-title">病房配置</view>
+    <view class="manager-card ward-card">
+      <picker mode="selector" range="{{departments}}" value="{{wardDepartmentIndex}}" bindchange="chooseWardDepartment"><view class="department-picker">科室：{{wardDepartment}}　›</view></picker>
+      <view wx:if="{{wardRows.length === 0}}" class="default-ward">未单独配置病房，默认使用“{{wardDepartment}}”。</view>
+      <view wx:if="{{wardRows.length}}" class="ward-list"><view wx:for="{{wardRows}}" wx:key="name" class="ward-row"><view class="order-number ward-number">{{item.number}}</view><text class="ward-name">{{item.name}}</text><view class="row-actions"><view class="move-action {{item.canMoveUp ? '' : 'disabled'}}" data-ward="{{item.name}}" data-direction="up" bindtap="moveWard">↑</view><view class="move-action {{item.canMoveDown ? '' : 'disabled'}}" data-ward="{{item.name}}" data-direction="down" bindtap="moveWard">↓</view><view wx:if="{{wardRows.length > 1}}" class="remove-action" data-ward="{{item.name}}" bindtap="removeWard">×</view></view></view></view>
+      <view class="ward-note">排序只影响病房选择与展示次序，不会改变已有患者的病房。配置两个及以上病房后，新患者须选择病房。</view>
+      <view class="add-row ward-add"><input placeholder="添加病房，如：综合一" value="{{wardInput}}" bindinput="inputWard" /><view bindtap="addWard">添加</view></view>
+    </view>
+  </block>
+
+  <wb-dialog visible="{{dialog.visible}}" title="{{dialog.title}}" message="{{dialog.message}}" confirm-text="{{dialog.confirmText}}" cancel-text="{{dialog.cancelText}}" show-cancel="{{dialog.showCancel}}" tone="{{dialog.tone}}" loading="{{dialog.loading}}" bindcancel="closeDialog" bindconfirm="confirmDialog" />
+</view>

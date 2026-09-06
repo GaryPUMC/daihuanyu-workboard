@@ -51,15 +51,19 @@ assert.equal(store.getWorkspaceIntegrity().ok, true);
 assert.equal(store.getPatientStatus(store.getPatient('QA-SIX-001')), '在院');
 assert.equal(store.getPatientStatus(store.getPatient('QA-SIX-006')), '待入院');
 
-// 独立术前核查和正式术式确认只留痕，不改变事实状态或生成待办。
+// 正式术式确认独立留痕，不改变事实状态或生成待办。
 assert.equal(store.confirmSurgeryName('QA-SIX-001', '脱敏正式术式甲').ok, true);
-assert.equal(store.setPreopCheck('QA-SIX-001', 'consentSigned', true).ok, true);
-assert.equal(store.setPreopCheck('QA-SIX-001', 'testsReviewed', true).ok, true);
-assert.equal(store.getPatient('QA-SIX-001').preopChecks.surgeryNameConfirmed.length > 0, true);
+assert.equal(store.getPatient('QA-SIX-001').surgeryNameConfirmedAt.length > 0, true);
+assert.equal('preopChecks' in store.getPatient('QA-SIX-001'), false);
 assert.equal(store.getPatientStatus(store.getPatient('QA-SIX-001')), '在院');
 assert.equal(store.getPatientTasks('QA-SIX-001').length, 0);
 assert.equal(store.updatePatient('QA-SIX-001', { firstAssistant: '虚拟一助', bed: '111' }).ok, true);
 assert.equal(store.getPatient('QA-SIX-001').bed, '111');
+assert.equal(store.getPatient('QA-SIX-001').surgeryNameConfirmedAt.length > 0, true, '无关资料修改不得清除正式术式确认');
+assert.equal(store.updatePatient('QA-SIX-001', { surgeryName: '调整后的脱敏拟行术式' }).ok, true);
+assert.equal(store.getPatient('QA-SIX-001').surgeryNameConfirmedAt, '', '拟行术式变化后必须重新确认正式术式');
+assert.equal(store.getPatient('QA-SIX-001').confirmedSurgeryName, '');
+assert.equal(store.confirmSurgeryName('QA-SIX-001', '重新确认的脱敏正式术式').ok, true);
 
 // 普通/重要待办均为普通工作项，不参与任何患者状态或出院阻断。
 const normalTask = store.addTask('QA-SIX-002', { title: '普通脱敏待办', priority: '普通', sourceRef: 'qa:normal' });
@@ -134,7 +138,7 @@ const legacy = {
   ],
 };
 const migrated = store.prepareBackupImport(legacy);
-assert.equal(migrated.targetSchemaVersion, 11);
+assert.equal(migrated.targetSchemaVersion, 13);
 assert.equal(Boolean(migrated.workspace.legacyWorkflow), true);
 assert.deepEqual(migrated.workspace.legacyWorkflow.stages, ['术前', '手术']);
 assert.equal('departmentWorkflows' in migrated.workspace.settings, false);
@@ -155,7 +159,7 @@ storage.set('daihuanyu_workboard_local_v3', structuredClone(migrated.workspace))
 assert.deepEqual(store.getActiveTasks().map((task) => task.id).sort(), ['legacy-path-orphan', 'legacy-path-todo']);
 assert.deepEqual(store.getPatientTasks('LEGACY-001').map((task) => task.id).sort(), ['legacy-path-orphan', 'legacy-path-todo']);
 assert.equal('stageLogs' in store.getPatientBundle('LEGACY-001'), false);
-assert.equal(Boolean(store.getPatient('LEGACY-001').preopChecks.consentSigned), true, '已完成术前核查记录应迁移保留');
+assert.equal(migrated.workspace.clinicalEvents.some((event) => event.patientId === 'LEGACY-001' && event.type === 'legacy-preop-check' && event.value === 'consentSigned'), true, '已完成旧术前核查应迁移为历史事件');
 
 // 备份恢复与恢复前快照保持关联完整。
 const backup = structuredClone(store.getWorkspace());

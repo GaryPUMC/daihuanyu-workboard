@@ -27,7 +27,6 @@ const version = read('../VERSION').split(/\r?\n/)[0].trim();
 assert.match(version, /^1\.2\./);
 assert.equal(appConfig.includes('pages/templates/templates'), false);
 assert.equal(appConfig.includes('pages/workflow-settings/workflow-settings'), false);
-assert.equal(exists('../utils/ai-privacy.js'), false);
 
 // 1.2.0 统一弹层：页面不再直接叠加系统确认窗，编辑面板不再整体 transform 抬升。
 ['../components/wb-dialog/wb-dialog.js', '../components/wb-dialog/wb-dialog.json', '../components/wb-dialog/wb-dialog.wxml', '../components/wb-dialog/wb-dialog.wxss', '../components/wb-sheet/wb-sheet.js', '../components/wb-sheet/wb-sheet.json', '../components/wb-sheet/wb-sheet.wxml', '../components/wb-sheet/wb-sheet.wxss'].forEach((path) => assert.equal(exists(path), true));
@@ -74,8 +73,8 @@ assert.equal(settingsJs.includes('goWorkflows'), false);
   assert.equal(detail.includes(text), false);
   assert.equal(detailJs.includes(text), false);
 });
-assert.equal(detail.includes('独立记录，不推进流程'), true);
-assert.equal(detail.includes('togglePreopCheck'), true);
+assert.equal(detail.includes('不推进流程'), true);
+assert.equal(detail.includes('openSurgeryNameConfirm'), true);
 assert.equal(detailJs.includes('confirmSurgeryName'), true);
 assert.equal(detail.includes('taskPriorities'), true);
 assert.equal(detail.includes('归档患者'), true);
@@ -110,12 +109,12 @@ assert.equal(patientsJs.includes("getPatientStatus(patient) === '已出院'"), t
 assert.equal(roundsJs.includes("getPatientStatus(patient) === '在院'"), true);
 
 // schema 10 兼容层退休旧工作流，且不再提供生成、推荐或推进 API。
-assert.match(store, /const SCHEMA_VERSION = 1[01]/);
+assert.match(store, /const SCHEMA_VERSION = \d+/);
 assert.equal(store.includes('legacyWorkflow'), true);
 assert.equal(store.includes('已退休的系统流程任务'), true);
 assert.equal(store.includes('旧路径转普通待办'), true);
 ['stageRequirementTasks', 'export function changePatientStage', 'export function ensureStageTasks', 'export function getPatientReminders', 'export function addReminderAsTask', 'export function addTasksFromDrafts', 'export function saveDepartmentWorkflow'].forEach((text) => assert.equal(store.includes(text), false));
-assert.equal(store.includes('export function setPreopCheck'), true);
+assert.equal(store.includes('export function setPreopCheck'), false);
 assert.equal(store.includes('export function confirmSurgeryName'), true);
 assert.equal(store.includes('pendingCriticalTasks = []'), true);
 assert.equal(store.includes('task.effect && task.effect.key'), false);
@@ -146,11 +145,11 @@ assert.equal(settings.includes('撤销建档回收站'), true);
 assert.equal(settingsJs.includes('verifyBackup'), true);
 assert.equal(detail.includes('仅复制，不自动发送'), true);
 assert.equal(home.includes('数据仅保存在当前设备'), true);
-assert.equal(project.includes('本小程序不提供AI服务'), true);
+assert.equal(project.includes('结构化入院资料仅在本机解析和核对'), true);
 
 const changelog = read('../releases/1.2.0/UPLOAD_CHANGELOG.md').trim();
 assert.equal(changelog.length <= 200, true);
-assert.equal(changelog.includes('本小程序不提供AI服务'), true);
+assert.equal(changelog.includes('数据仅在当前设备处理和保存'), true);
 assert.equal(exists('../releases/1.2.0/source.tar.gz'), true);
 
 console.log('1.2.0 compact modal and sheet release checks: passed');

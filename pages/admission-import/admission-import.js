@@ -1,4 +1,4 @@
-import { buildAdmissionPatient, getAdmissionImportPrompt, parseAdmissionImport } from '../../utils/admission-import';
+import { buildAdmissionPatient, getAdmissionImportGuide, parseAdmissionImport } from '../../utils/admission-import';
 import { createPatientsAtomically, getWorkspace, todayKey } from '../../utils/workspace-store';
 import { createDialog, emptyDialog } from '../../utils/ui-state';
 
@@ -16,17 +16,17 @@ function preserveSelections(nextCandidates, previousCandidates) {
 
 Page({
   data: {
-    activeDepartment: '', prompt: '', inputText: '', candidates: [], parseError: '', summary: null, resultText: '',
+    activeDepartment: '', importGuide: '', inputText: '', candidates: [], parseError: '', summary: null, resultText: '',
     departments: [], departmentWards: {}, dialog: emptyDialog(),
   },
   onShow() {
     const workspace = getWorkspace();
-    this.setData({ activeDepartment: workspace.settings.activeDepartment, departments: workspace.settings.departments, departmentWards: workspace.settings.departmentWards, prompt: getAdmissionImportPrompt(todayKey()) });
+    this.setData({ activeDepartment: workspace.settings.activeDepartment, departments: workspace.settings.departments, departmentWards: workspace.settings.departmentWards, importGuide: getAdmissionImportGuide(todayKey()) });
   },
   inputText(e) { this.setData({ inputText: e.detail.value, parseError: '', resultText: '' }); },
   openDialog(config) { wx.hideKeyboard({ complete: () => this.setData({ dialog: createDialog(config) }) }); },
-  copyPrompt() {
-    wx.setClipboardData({ data: this.data.prompt, success: () => wx.showToast({ title: '提示词已复制', icon: 'success' }) });
+  copyImportGuide() {
+    wx.setClipboardData({ data: this.data.importGuide, success: () => wx.showToast({ title: '整理格式已复制', icon: 'success' }) });
   },
   parseText() {
     const workspace = getWorkspace();

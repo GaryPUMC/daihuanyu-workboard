@@ -3,7 +3,7 @@
   <view class="department-filter"><view>当前工作科室</view><picker mode="selector" range="{{departments}}" value="{{currentDepartmentIndex}}" bindchange="chooseCurrentDepartment"><view>{{activeDepartment}}　›</view></picker></view>
   <view class="search"><text>⌕</text><input placeholder="搜索住院号、姓名、床位、诊断；可跨科室定位" value="{{query}}" bindinput="search" /></view>
   <view class="tabs"><view class="{{viewMode === 'active' ? 'active' : ''}}" data-mode="active" bindtap="switchView">在院／待入院</view><view class="{{viewMode === 'archive' ? 'active' : ''}}" data-mode="archive" bindtap="switchView">出院患者</view></view>
-  <view class="toolbar"><view class="count">{{patients.length}} 位{{viewMode === 'active' ? '在院／待入院' : '出院'}}患者</view><view wx:if="{{viewMode === 'active'}}" class="add import" bindtap="goAdmissionImport">AI 导入拟入院</view><view wx:if="{{viewMode === 'active'}}" class="add" bindtap="startCreate">＋ 新增患者</view></view>
+  <view class="toolbar"><view class="count">{{patients.length}} 位{{viewMode === 'active' ? '在院／待入院' : '出院'}}患者</view><view wx:if="{{viewMode === 'active'}}" class="add import" bindtap="goAdmissionImport">结构化导入</view><view wx:if="{{viewMode === 'active'}}" class="add" bindtap="startCreate">＋ 新增患者</view></view>
 
   <view wx:if="{{showForm}}" class="form-card">
     <view class="form-title">{{editingId ? '编辑患者资料' : '新增本地患者'}}</view>

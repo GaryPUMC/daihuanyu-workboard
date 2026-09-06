@@ -1,6 +1,6 @@
 <view class="page" wx:if="{{ready}}">
   <view class="privacy">【隐私】人工核对页仅在本机修改，不会发送患者资料。</view>
-  <view class="note">逐项核对 AI 结果。未知患者类型、入院状态及国疗科室不会被系统猜测。</view>
+  <view class="note">逐项核对解析结果。未知患者类型、入院状态及国疗科室不会由系统猜测。</view>
   <view wx:if="{{incomplete}}" class="incomplete-banner">信息未完整：请补全下方红色高亮字段后再保存。</view>
 
   <view class="field-block"><input class="field {{formErrors.id ? 'field-error' : ''}}" placeholder="医院住院号 / 病案号" data-field="id" value="{{form.id}}" bindinput="input" /><view wx:if="{{formErrors.id}}" class="error-text">{{formErrors.id}}</view></view>

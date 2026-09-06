@@ -8,20 +8,29 @@ const MIGRATION_SNAPSHOT_KEY = 'daihuanyu_workboard_migration_snapshot_v2';
 const RESTORE_SNAPSHOT_KEY = 'daihuanyu_workboard_restore_snapshot_v3';
 const SIMULATION_CLEANUP_SNAPSHOT_KEY = 'daihuanyu_workboard_simulation_cleanup_snapshot_v1';
 const V4_MIGRATION_SNAPSHOT_KEY = 'daihuanyu_workboard_migration_snapshot_v4';
-const SCHEMA_VERSION = 11;
-const PATIENT_RECORD_KEYS = ['rounds', 'tasks', 'taskDrafts', 'stageLogs', 'devices', 'observations', 'clinicalEvents', 'pathologySpecimens'];
+const PREOP_MIGRATION_SNAPSHOT_KEY = 'daihuanyu_workboard_preop_migration_snapshot_v12';
+const MEDICAL_RECORD_MIGRATION_SNAPSHOT_KEY = 'daihuanyu_workboard_medical_record_migration_snapshot_v13';
+const SCHEMA_VERSION = 13;
+const PATIENT_RECORD_KEYS = ['rounds', 'tasks', 'taskDrafts', 'stageLogs', 'devices', 'observations', 'clinicalEvents', 'pathologySpecimens', 'medicalRecordCompletions'];
 
 export const PLASTIC_PATIENT_TYPES = ['普通', '国疗', '日间'];
 export const ALLERGY_STATUS_OPTIONS = ['unknown', 'none', 'present'];
 const PLASTIC_SURGERY_NAME_CONFIRM_TASK = '与主刀确认手术名称，并核实手术同意书名称';
 const PLASTIC_CONSENT_TASK = '核查手术同意书等已签署';
 
-const PREOP_CHECK_KEYS = {
+const LEGACY_PREOP_CHECK_KEYS = {
   [PLASTIC_SURGERY_NAME_CONFIRM_TASK]: 'surgeryNameConfirmed',
   [PLASTIC_CONSENT_TASK]: 'consentSigned',
   '核查术前检查已完善并打印化验单': 'testsReviewed',
   '核查入院病史已签字': 'historySigned',
   '完成术前拍照': 'photosCompleted',
+};
+const LEGACY_PREOP_CHECK_TITLES = {
+  surgeryNameConfirmed: '与主刀确认正式术式',
+  consentSigned: '核查手术同意书等已签署',
+  testsReviewed: '核查术前检查已完善并打印化验单',
+  historySigned: '核查入院病史已签字',
+  photosCompleted: '完成术前拍照',
 };
 const BUILTIN_PATH_RULE_IDS = new Set(['rule-preop-1', 'rule-pod-0', 'rule-pod-1', 'rule-discharge']);
 const RETIRED_WORKFLOW_TASK_SOURCE = '已退休的系统流程任务';
@@ -36,6 +45,7 @@ const DEFAULT_ROUND_ACTIONS = [
 const DEFAULT_SETTINGS = {
   activeDepartment: '整形外科',
   departments: ['轮转通用', '整形外科', '普外科', '骨科', '泌尿外科', '妇产科', '神经外科'],
+  archivedDepartments: [],
   // Omit a department here to use its single, hidden default ward. Add two or
   // more wards in Settings to enable an explicit ward selector for that department.
   departmentWards: {},
@@ -45,7 +55,6 @@ const DEFAULT_SETTINGS = {
   conditionTags: ['有引流', '留置导尿', '抗凝中'],
   firstAssistants: ['张明子', '张文超', '李硕', '常国婧'],
   roundActionTemplates: DEFAULT_ROUND_ACTIONS,
-  aiGatewayConfigured: false,
   // 脱敏默认关闭：用户可在任一页面切换，所有页面读取同一份本地偏好。
   privacyMaskEnabled: false,
   clinicalPresetVersion: 5,
@@ -171,6 +180,7 @@ function emptyWorkspace() {
     observations: [],
     clinicalEvents: [],
     pathologySpecimens: [],
+    medicalRecordCompletions: [],
     revokedRegistrations: [],
     legacyWorkflow: null,
     meta: { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -213,8 +223,9 @@ function normalizePatient(patient, archived = false, fallbackDepartment = '轮�
   const patientType = PLASTIC_PATIENT_TYPES.includes(patient.patientType) ? patient.patientType : '';
   const allergyStatus = ALLERGY_STATUS_OPTIONS.includes(patient.allergyStatus) ? patient.allergyStatus : (patient.allergies || patient.allergyHistory ? 'present' : 'unknown');
   const sourceChecks = patient.preopChecks && typeof patient.preopChecks === 'object' ? patient.preopChecks : {};
-  const preopChecks = Object.fromEntries(Object.values(PREOP_CHECK_KEYS).map((key) => [key, sourceChecks[key] || '']));
-  if (patient.surgeryNameConfirmedAt) preopChecks.surgeryNameConfirmed = patient.surgeryNameConfirmedAt;
+  const confirmedSurgeryName = `${patient.confirmedSurgeryName || ''}`.trim();
+  const sourceConfirmationAt = patient.surgeryNameConfirmedAt || sourceChecks.surgeryNameConfirmed || '';
+  const surgeryNameConfirmedAt = confirmedSurgeryName && sourceConfirmationAt ? sourceConfirmationAt : '';
   const explicitAdmissionState = ['planned', 'admitted'].includes(patient.admissionState) ? patient.admissionState : '';
   // schema 10 及更早版本没有显式入院状态。迁移时保持原有日期语义，
   // 对缺少日期或床位的记录额外标记待核实，不静默补造事实。
@@ -245,9 +256,8 @@ function normalizePatient(patient, archived = false, fallbackDepartment = '轮�
     allergyStatus,
     allergies: allergyStatus === 'none' ? '' : patient.allergies || patient.allergyHistory || '',
     surgeryName: patient.surgeryName || patient.procedure || '',
-    confirmedSurgeryName: patient.confirmedSurgeryName || '',
-    surgeryNameConfirmedAt: patient.surgeryNameConfirmedAt || '',
-    preopChecks,
+    confirmedSurgeryName,
+    surgeryNameConfirmedAt,
     surgeon: patient.surgeon || '',
     firstAssistant: patient.firstAssistant || '',
     templateId: patient.templateId || '',
@@ -295,6 +305,35 @@ function normalizeRound(round, patientId) {
   };
 }
 
+function normalizeMedicalRecordCompletion(completion, patientId) {
+  const pod = completion.pod === null || completion.pod === undefined || completion.pod === '' ? null : Number(completion.pod);
+  return {
+    id: completion.id || uniqueId('medical-record'), patientId: patientId || completion.patientId || '',
+    requirementKey: `${completion.requirementKey || ''}`,
+    kind: completion.kind === 'discharge' ? 'discharge' : 'pod',
+    pod: Number.isFinite(pod) ? pod : null,
+    dueDate: `${completion.dueDate || ''}`.slice(0, 10),
+    surgeryDate: `${completion.surgeryDate || ''}`.slice(0, 10),
+    dischargeDate: `${completion.dischargeDate || ''}`.slice(0, 10),
+    completedAt: completion.completedAt || new Date().toISOString(),
+  };
+}
+
+function normalizeMedicalRecordCompletions(completions, patientId = '') {
+  const result = [];
+  const seen = new Set();
+  (completions || []).map((item) => normalizeMedicalRecordCompletion(item, patientId || item.patientId))
+    .filter((item) => item.patientId && item.requirementKey && item.dueDate && validDateKey(item.dueDate))
+    .sort((a, b) => `${b.completedAt}`.localeCompare(`${a.completedAt}`))
+    .forEach((item) => {
+      const key = `${item.patientId}|${item.requirementKey}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push(item);
+    });
+  return result;
+}
+
 function normalizePlainTextRounds(rounds, patientId) {
   return (rounds || []).map((item) => normalizeRound(item, patientId || item.patientId))
     .filter((item) => item.content.trim());
@@ -311,11 +350,15 @@ function normalizeSettings(settings = {}) {
   ['departments', 'procedures', 'diagnoses', 'taskCategories', 'conditionTags', 'firstAssistants'].forEach((key) => {
     result[key] = Array.isArray(result[key]) ? Array.from(new Set(result[key].filter(Boolean))) : clone(DEFAULT_SETTINGS[key]);
   });
+  if (!result.departments.length) result.departments = clone(DEFAULT_SETTINGS.departments);
+  result.archivedDepartments = Array.isArray(result.archivedDepartments)
+    ? Array.from(new Set(result.archivedDepartments.map((item) => `${item || ''}`.trim()).filter(Boolean))).filter((item) => !result.departments.includes(item))
+    : [];
   if (!result.procedures.includes('未选择术式')) result.procedures.unshift('未选择术式');
-  if (!result.departments.includes(result.activeDepartment)) result.activeDepartment = '整形外科';
+  if (!result.departments.includes(result.activeDepartment)) result.activeDepartment = result.departments.includes(DEFAULT_SETTINGS.activeDepartment) ? DEFAULT_SETTINGS.activeDepartment : result.departments[0];
   const sourceWards = settings.departmentWards && typeof settings.departmentWards === 'object' && !Array.isArray(settings.departmentWards) ? settings.departmentWards : {};
   result.departmentWards = Object.fromEntries(Object.entries(sourceWards)
-    .filter(([department]) => result.departments.includes(department))
+    .filter(([department]) => result.departments.includes(department) || result.archivedDepartments.includes(department))
     .map(([department, wards]) => [department, Array.from(new Set((Array.isArray(wards) ? wards : []).map((ward) => `${ward || ''}`.trim()).filter(Boolean)))])
     .filter(([, wards]) => wards.length));
   ['stages', 'departmentWorkflows', 'departmentTemplates', 'procedureTemplates', 'stageRequirements'].forEach((key) => { delete result[key]; });
@@ -371,6 +414,81 @@ function normalizeClinicalEvent(event) {
   };
 }
 
+function validEventTime(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime());
+}
+
+function legacyEventTime(value, patient) {
+  const candidates = [value, patient && patient.updatedAt, patient && patient.createdAt];
+  return candidates.find((candidate) => candidate && validEventTime(candidate)) || '1970-01-01T00:00:00.000Z';
+}
+
+function appendMigratedPreopEvent(events, patient, key, value) {
+  if (!patient || !patient.id || !value || !LEGACY_PREOP_CHECK_TITLES[key]) return false;
+  const confirmedName = `${patient.confirmedSurgeryName || ''}`.trim();
+  let type = 'legacy-preop-check';
+  let eventValue = key;
+  let note = `旧版记录：${LEGACY_PREOP_CHECK_TITLES[key]}`;
+  if (key === 'surgeryNameConfirmed' && confirmedName) {
+    type = 'surgery-name-confirmed';
+    eventValue = confirmedName;
+    note = '由旧版正式术式确认记录迁移';
+  } else if (key === 'photosCompleted') {
+    type = 'cooperation-photo';
+    eventValue = '旧版术前拍照记录已迁移';
+    note = '由旧版“完成术前拍照”记录迁移';
+  }
+  const duplicate = events.some((event) => event.patientId === patient.id && event.type === type
+    && (type !== 'legacy-preop-check' || event.value === key));
+  if (duplicate) return false;
+  events.push(normalizeClinicalEvent({
+    id: `migration-preop-v12-${key}-${patient.id}`,
+    patientId: patient.id, type, value: eventValue, note, at: legacyEventTime(value, patient),
+  }));
+  return true;
+}
+
+function migratePatientPreopRecord(events, patient, tasks = []) {
+  if (!patient || !patient.id) return { patientCount: 0, eventCount: 0 };
+  const sourceChecks = patient.preopChecks && typeof patient.preopChecks === 'object' ? patient.preopChecks : {};
+  const values = Object.fromEntries(Object.keys(LEGACY_PREOP_CHECK_TITLES).map((key) => [key, sourceChecks[key] || '']));
+  if (!values.surgeryNameConfirmed && patient.surgeryNameConfirmedAt) values.surgeryNameConfirmed = patient.surgeryNameConfirmedAt;
+  tasks.filter((task) => task && task.patientId === patient.id && task.status === 'done').forEach((task) => {
+    const key = LEGACY_PREOP_CHECK_KEYS[task.title];
+    if (key && !values[key]) values[key] = task.completedAt || task.createdAt || patient.updatedAt || patient.createdAt || true;
+  });
+  const present = Object.entries(values).filter(([, value]) => Boolean(value));
+  const eventCount = present.reduce((count, [key, value]) => count + (appendMigratedPreopEvent(events, patient, key, value) ? 1 : 0), 0);
+  return { patientCount: present.length ? 1 : 0, eventCount };
+}
+
+function migratePreopRecordsToEvents(workspace, source, fromSchemaVersion) {
+  const totals = { patientCount: 0, eventCount: 0 };
+  const sourceTasks = Array.isArray(source.tasks) ? source.tasks : [];
+  [...(source.patients || []), ...(source.archivedPatients || [])].forEach((patient) => {
+    const result = migratePatientPreopRecord(workspace.clinicalEvents, patient, [...sourceTasks, ...(patient.tasks || [])]);
+    totals.patientCount += result.patientCount;
+    totals.eventCount += result.eventCount;
+  });
+  (source.revokedRegistrations || []).forEach((entry, index) => {
+    const target = workspace.revokedRegistrations[index];
+    if (!target) return;
+    const sourcePatient = (entry && entry.patient) || {};
+    const sourceRecords = (entry && entry.records) || {};
+    const result = migratePatientPreopRecord(target.records.clinicalEvents, sourcePatient, sourceRecords.tasks || []);
+    totals.patientCount += result.patientCount;
+    totals.eventCount += result.eventCount;
+  });
+  workspace.meta.preopMigration = {
+    fromSchemaVersion,
+    patientCount: totals.patientCount,
+    eventCount: totals.eventCount,
+    migratedAt: new Date().toISOString(),
+  };
+  return totals;
+}
+
 function normalizeRevokedRegistration(entry, fallbackDepartment = '轮转通用') {
   const patient = normalizePatient((entry && entry.patient) || {}, false, fallbackDepartment);
   const records = (entry && entry.records) || {};
@@ -386,6 +504,7 @@ function normalizeRevokedRegistration(entry, fallbackDepartment = '轮转通用'
       observations: (records.observations || []).map((item) => normalizeObservation(item, patient)),
       clinicalEvents: (records.clinicalEvents || []).map(normalizeClinicalEvent),
       pathologySpecimens: (records.pathologySpecimens || []).map(normalizePathologySpecimen),
+      medicalRecordCompletions: normalizeMedicalRecordCompletions(records.medicalRecordCompletions, patient.id),
     },
     revokedAt: (entry && entry.revokedAt) || new Date().toISOString(),
   };
@@ -421,6 +540,7 @@ function purgePlasticSimulationRecords(workspace) {
   workspace.observations = workspace.observations.filter((item) => !patientIds.has(item.patientId));
   workspace.clinicalEvents = workspace.clinicalEvents.filter((item) => !patientIds.has(item.patientId));
   workspace.pathologySpecimens = workspace.pathologySpecimens.filter((item) => !patientIds.has(item.patientId));
+  workspace.medicalRecordCompletions = workspace.medicalRecordCompletions.filter((item) => !patientIds.has(item.patientId));
   return true;
 }
 
@@ -446,11 +566,7 @@ function legacyWorkflowTask(task) {
 }
 
 function retireLegacyWorkflowTasks(workspace) {
-  const patientMap = new Map([...workspace.patients, ...workspace.archivedPatients].map((patient) => [patient.id, patient]));
   workspace.tasks.forEach((task) => {
-    const patient = patientMap.get(task.patientId);
-    const checkKey = PREOP_CHECK_KEYS[task.title];
-    if (patient && checkKey && task.status === 'done') patient.preopChecks[checkKey] = task.completedAt || task.createdAt || new Date().toISOString();
     if (task.status === 'done' || !legacyWorkflowTask(task)) return;
     const sourceRef = `${task.sourceRef || ''}`;
     const ruleId = sourceRef.startsWith('rule:') ? sourceRef.split(':')[1] : '';
@@ -465,9 +581,6 @@ function retireLegacyWorkflowTasks(workspace) {
     task.stage = '';
     task.critical = false;
     task.effect = null;
-  });
-  workspace.patients.forEach((patient) => {
-    if (patient.surgeryNameConfirmedAt) patient.preopChecks.surgeryNameConfirmed = patient.surgeryNameConfirmedAt;
   });
 }
 
@@ -485,6 +598,7 @@ function migrateLegacy(legacy) {
       action: 'legacy', note: '', at: entry.at || new Date().toISOString(),
     }));
   });
+  migratePreopRecordsToEvents(workspace, legacy, 1);
   retireLegacyWorkflowTasks(workspace);
   workspace.meta.migratedFrom = 1;
   workspace.meta.migratedAt = new Date().toISOString();
@@ -511,9 +625,11 @@ function normalizeWorkspace(saved) {
     .filter((item) => item.entryType === 'removed' || Number.isFinite(item.value));
   workspace.clinicalEvents = (saved.clinicalEvents || []).map(normalizeClinicalEvent);
   workspace.pathologySpecimens = (saved.pathologySpecimens || []).map(normalizePathologySpecimen);
+  workspace.medicalRecordCompletions = normalizeMedicalRecordCompletions(saved.medicalRecordCompletions);
   workspace.revokedRegistrations = (saved.revokedRegistrations || []).map((entry) => normalizeRevokedRegistration(entry, workspace.settings.activeDepartment));
   workspace.meta = { ...workspace.meta, ...(saved.meta || {}) };
   workspace.legacyWorkflow = saved.legacyWorkflow ? clone(saved.legacyWorkflow) : (sourceSchemaVersion < 10 ? workflowCompatibility(saved) : null);
+  if (sourceSchemaVersion < 12) migratePreopRecordsToEvents(workspace, saved, sourceSchemaVersion);
   purgePlasticSimulationRecords(workspace);
   [...workspace.patients, ...workspace.archivedPatients].forEach((patient) => {
     if (patient.legacyDrainPresent && !workspace.devices.some((device) => device.patientId === patient.id && device.type === 'drain')) {
@@ -544,7 +660,11 @@ export function getWorkspace() {
     const needsRoundCleanup = hasLegacyStructuredRounds(saved);
     const workspace = normalizeWorkspace(saved);
     if (needsClinicalUpgrade || needsSchemaUpgrade || hasPlasticSimulationData || needsRoundCleanup) {
-      if (needsSchemaUpgrade) wx.setStorageSync(V4_MIGRATION_SNAPSHOT_KEY, clone(saved));
+      if (needsSchemaUpgrade) {
+        wx.setStorageSync(V4_MIGRATION_SNAPSHOT_KEY, clone(saved));
+        if (Number(saved.schemaVersion || 1) < 12) wx.setStorageSync(PREOP_MIGRATION_SNAPSHOT_KEY, clone(saved));
+        if (Number(saved.schemaVersion || 1) < 13) wx.setStorageSync(MEDICAL_RECORD_MIGRATION_SNAPSHOT_KEY, clone(saved));
+      }
       if (hasPlasticSimulationData) wx.setStorageSync(SIMULATION_CLEANUP_SNAPSHOT_KEY, clone(saved));
       return saveWorkspace(workspace);
     }
@@ -641,9 +761,11 @@ export function getBackupSummary(workspace) {
     archivedPatients: (workspace.archivedPatients || []).length,
     rounds: (workspace.rounds || []).length,
     tasks: (workspace.tasks || []).length,
+    medicalRecordCompletions: (workspace.medicalRecordCompletions || []).length,
     revokedPatients: (workspace.revokedRegistrations || []).length,
     updatedAt: workspace.meta && workspace.meta.updatedAt ? workspace.meta.updatedAt : '',
     lastBackupVerification: workspace.meta && workspace.meta.lastBackupVerification ? workspace.meta.lastBackupVerification : null,
+    preopMigration: workspace.meta && workspace.meta.preopMigration ? clone(workspace.meta.preopMigration) : null,
   };
 }
 
@@ -715,6 +837,7 @@ export function getPatientBundle(id) {
     observations: workspace.observations.filter((item) => item.patientId === id),
     clinicalEvents: workspace.clinicalEvents.filter((item) => item.patientId === id),
     pathologySpecimens: workspace.pathologySpecimens.filter((item) => item.patientId === id),
+    medicalRecordCompletions: workspace.medicalRecordCompletions.filter((item) => item.patientId === id),
   };
 }
 
@@ -796,7 +919,6 @@ export function updatePatient(patientId, changes) {
   if (patient.department === '整形外科' && !hasActualDischarge(patient) && (patient.surgeryName !== previousSurgeryName || patient.surgeon !== previousSurgeon)) {
     patient.confirmedSurgeryName = '';
     patient.surgeryNameConfirmedAt = '';
-    patient.preopChecks.surgeryNameConfirmed = '';
   }
   if (nextId !== patientId) {
     workspace.rounds.forEach((item) => { if (item.patientId === patientId) item.patientId = nextId; });
@@ -807,23 +929,13 @@ export function updatePatient(patientId, changes) {
     workspace.observations.forEach((item) => { if (item.patientId === patientId) item.patientId = nextId; });
     workspace.clinicalEvents.forEach((item) => { if (item.patientId === patientId) item.patientId = nextId; });
     workspace.pathologySpecimens.forEach((item) => { if (item.patientId === patientId) item.patientId = nextId; });
+    workspace.medicalRecordCompletions.forEach((item) => { if (item.patientId === patientId) item.patientId = nextId; });
   }
   const revisions = auditFields.filter(([key]) => before[key] !== `${patient[key] || ''}`)
     .map(([key, label]) => `${label}：${before[key] || '未填写'} → ${patient[key] || '未填写'}`);
   if (revisions.length) workspace.clinicalEvents.push(normalizeClinicalEvent({
     patientId: nextId, type: 'patient-revision', value: '关键资料已修改', note: revisions.join('；'), at: new Date().toISOString(),
   }));
-  saveWorkspace(workspace);
-  return { ok: true, patient };
-}
-
-export function setPreopCheck(patientId, key, done) {
-  const workspace = getWorkspace();
-  const patient = workspace.patients.find((item) => item.id === patientId);
-  if (!patient) return { ok: false, error: '未找到在院患者' };
-  if (!Object.values(PREOP_CHECK_KEYS).includes(key) || key === 'surgeryNameConfirmed') return { ok: false, error: '未找到该术前核查项' };
-  patient.preopChecks[key] = done ? new Date().toISOString() : '';
-  patient.updatedAt = new Date().toISOString();
   saveWorkspace(workspace);
   return { ok: true, patient };
 }
@@ -837,7 +949,6 @@ export function confirmSurgeryName(patientId, confirmedSurgeryName) {
   const at = new Date().toISOString();
   patient.confirmedSurgeryName = value;
   patient.surgeryNameConfirmedAt = at;
-  patient.preopChecks.surgeryNameConfirmed = at;
   patient.updatedAt = at;
   workspace.clinicalEvents.push(normalizeClinicalEvent({ patientId, type: 'surgery-name-confirmed', value, note: '已与主刀确认正式术式', at }));
   saveWorkspace(workspace);
@@ -1011,10 +1122,76 @@ export function toggleTask(patientId, taskId) {
 export function addSettingItem(category, value) {
   const workspace = getWorkspace();
   const list = workspace.settings[category];
-  if (!Array.isArray(list) || list.includes(value)) return false;
+  if (!Array.isArray(list) || list.includes(value) || (category === 'departments' && (workspace.settings.archivedDepartments || []).includes(value))) return false;
   list.push(value);
   saveWorkspace(workspace);
   return true;
+}
+
+export function getDepartmentUsage(department) {
+  const workspace = getWorkspace();
+  const name = `${department || ''}`.trim();
+  const activePatients = workspace.patients.filter((patient) => patient.department === name).length;
+  const archivedPatients = workspace.archivedPatients.filter((patient) => patient.department === name).length;
+  const revokedPatients = workspace.revokedRegistrations.filter((entry) => entry && entry.patient && entry.patient.department === name).length;
+  return { activePatients, archivedPatients, revokedPatients, totalPatients: activePatients + archivedPatients + revokedPatients };
+}
+
+export function archiveDepartment(department) {
+  const workspace = getWorkspace();
+  const name = `${department || ''}`.trim();
+  if (!workspace.settings.departments.includes(name)) return { ok: false, error: '该科室不存在或已归档' };
+  if (workspace.settings.departments.length <= 1) return { ok: false, error: '请至少保留一个在用科室' };
+  if (workspace.settings.activeDepartment === name) return { ok: false, error: '请先切换当前工作科室，再归档' };
+  workspace.settings.departments = workspace.settings.departments.filter((item) => item !== name);
+  workspace.settings.archivedDepartments = [...(workspace.settings.archivedDepartments || []), name];
+  saveWorkspace(workspace);
+  return { ok: true };
+}
+
+export function restoreDepartment(department) {
+  const workspace = getWorkspace();
+  const name = `${department || ''}`.trim();
+  if (!(workspace.settings.archivedDepartments || []).includes(name)) return { ok: false, error: '该归档科室不存在' };
+  workspace.settings.archivedDepartments = workspace.settings.archivedDepartments.filter((item) => item !== name);
+  workspace.settings.departments.push(name);
+  saveWorkspace(workspace);
+  return { ok: true };
+}
+
+export function moveDepartment(department, direction) {
+  const workspace = getWorkspace();
+  const departments = workspace.settings.departments;
+  const index = departments.indexOf(department);
+  const offset = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
+  const targetIndex = index + offset;
+  if (index < 0 || !offset || targetIndex < 0 || targetIndex >= departments.length) return false;
+  [departments[index], departments[targetIndex]] = [departments[targetIndex], departments[index]];
+  saveWorkspace(workspace);
+  return true;
+}
+
+export function deleteDepartmentPermanently(department) {
+  const workspace = getWorkspace();
+  const name = `${department || ''}`.trim();
+  const activeDepartments = workspace.settings.departments;
+  const archivedDepartments = workspace.settings.archivedDepartments || [];
+  const isActive = activeDepartments.includes(name);
+  if (!isActive && !archivedDepartments.includes(name)) return { ok: false, error: '该科室不存在' };
+  if (isActive && activeDepartments.length <= 1) return { ok: false, error: '请至少保留一个在用科室' };
+  if (workspace.settings.activeDepartment === name) return { ok: false, error: '请先切换当前工作科室，再移除' };
+  const usage = getDepartmentUsage(name);
+  const patientIds = new Set([...workspace.patients, ...workspace.archivedPatients]
+    .filter((patient) => patient.department === name).map((patient) => patient.id));
+  workspace.patients = workspace.patients.filter((patient) => patient.department !== name);
+  workspace.archivedPatients = workspace.archivedPatients.filter((patient) => patient.department !== name);
+  PATIENT_RECORD_KEYS.forEach((key) => { workspace[key] = workspace[key].filter((item) => !patientIds.has(item.patientId)); });
+  workspace.revokedRegistrations = workspace.revokedRegistrations.filter((entry) => !(entry && entry.patient && entry.patient.department === name));
+  workspace.settings.departments = activeDepartments.filter((item) => item !== name);
+  workspace.settings.archivedDepartments = archivedDepartments.filter((item) => item !== name);
+  delete workspace.settings.departmentWards[name];
+  saveWorkspace(workspace);
+  return { ok: true, usage };
 }
 
 export function addDepartmentWard(department, ward) {
@@ -1030,6 +1207,19 @@ export function addDepartmentWard(department, ward) {
   workspace.settings.departmentWards[departmentName] = configured.length ? [...configured, wardName] : [wardName];
   saveWorkspace(workspace);
   return { ok: true };
+}
+
+export function moveDepartmentWard(department, ward, direction) {
+  const workspace = getWorkspace();
+  const departmentName = `${department || ''}`.trim();
+  const wards = workspace.settings.departmentWards[departmentName];
+  const index = Array.isArray(wards) ? wards.indexOf(ward) : -1;
+  const offset = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
+  const targetIndex = index + offset;
+  if (index < 0 || !offset || targetIndex < 0 || targetIndex >= wards.length) return false;
+  [wards[index], wards[targetIndex]] = [wards[targetIndex], wards[index]];
+  saveWorkspace(workspace);
+  return true;
 }
 
 export function removeDepartmentWard(department, ward) {
@@ -1051,8 +1241,9 @@ export function removeSettingItem(category, value) {
   if (!Array.isArray(list)) return { ok: false, error: '该设置项不存在' };
   if (!list.includes(value)) return { ok: false, error: '该设置项不存在' };
   if (category === 'departments') {
+    if (list.length <= 1) return { ok: false, error: '请至少保留一个在用科室' };
     if (workspace.settings.activeDepartment === value) return { ok: false, error: '请先切换当前工作科室，再移除' };
-    if ([...workspace.patients, ...workspace.archivedPatients].some((patient) => patient.department === value)) return { ok: false, error: '该科室仍有关联患者，请先调整患者归属' };
+    if (getDepartmentUsage(value).totalPatients) return { ok: false, error: '该科室仍有关联患者或回收站记录，请归档科室或经二次确认永久删除' };
     delete workspace.settings.departmentWards[value];
   }
   workspace.settings[category] = list.filter((item) => item !== value);
@@ -1063,6 +1254,186 @@ export function removeSettingItem(category, value) {
 export function getPOD(surgeryDate, referenceDate = todayKey()) {
   if (!surgeryDate) return null;
   return dayDifference(referenceDate, surgeryDate);
+}
+
+function shiftDateKey(dateKey, offset) {
+  if (!dateKey || !validDateKey(dateKey)) return '';
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + offset));
+  return `${date.getUTCFullYear()}-${`${date.getUTCMonth() + 1}`.padStart(2, '0')}-${`${date.getUTCDate()}`.padStart(2, '0')}`;
+}
+
+function shortDateLabel(dateKey) {
+  if (!validDateKey(dateKey) || !dateKey) return '';
+  const [, month, day] = dateKey.split('-').map(Number);
+  return `${month}/${day}`;
+}
+
+function medicalRecordPodsThrough(maxPod) {
+  const limit = Math.max(9, Math.floor(Number(maxPod) || 0));
+  const pods = [1, 2, 3];
+  for (let pod = 6; pod <= limit; pod += 3) pods.push(pod);
+  return pods;
+}
+
+function nextMedicalRecordPod(currentPod) {
+  const pod = Math.max(0, Math.floor(Number(currentPod) || 0));
+  if (pod < 1) return 1;
+  if (pod < 2) return 2;
+  if (pod < 3) return 3;
+  if (pod < 6) return 6;
+  return (Math.floor(pod / 3) + 1) * 3;
+}
+
+function podRequirementKey(surgeryDate, pod) {
+  return `pod:${surgeryDate}:${pod}`;
+}
+
+function dischargeRequirementKey(dischargeDate) {
+  return `discharge:${dischargeDate}`;
+}
+
+function medicalRecordStatus(dueDate, referenceDate) {
+  if (dueDate > referenceDate) return { status: 'future', overdueDays: 0, statusText: '未到' };
+  const overdueDays = Math.max(0, dayDifference(referenceDate, dueDate) || 0);
+  if (overdueDays === 0) return { status: 'today', overdueDays, statusText: '今日' };
+  if (overdueDays >= 7) return { status: 'severe', overdueDays, statusText: `欠${overdueDays}天` };
+  if (overdueDays >= 3) return { status: 'overdue', overdueDays, statusText: `欠${overdueDays}天` };
+  return { status: 'warning', overdueDays, statusText: `欠${overdueDays}天` };
+}
+
+function completionLookup(workspace) {
+  return new Map((workspace.medicalRecordCompletions || []).map((item) => [`${item.patientId}|${item.requirementKey}`, item]));
+}
+
+function buildMedicalRecordPodCell(patient, pod, referenceDate, completions) {
+  const dueDate = shiftDateKey(patient.surgeryDate, pod);
+  const requirementKey = podRequirementKey(patient.surgeryDate, pod);
+  const afterActualDischarge = Boolean(patient.actualDischargeDate && dueDate > patient.actualDischargeDate);
+  if (afterActualDischarge) {
+    return { kind: 'pod', pod, dueDate, dateLabel: shortDateLabel(dueDate), requirementKey, status: 'not-applicable', statusText: '—', overdueDays: 0, done: false, actionable: false };
+  }
+  const completion = completions.get(`${patient.id}|${requirementKey}`);
+  if (completion) {
+    return { kind: 'pod', pod, dueDate, dateLabel: shortDateLabel(dueDate), requirementKey, status: 'done', statusText: '✓', overdueDays: 0, done: true, actionable: true };
+  }
+  const state = medicalRecordStatus(dueDate, referenceDate);
+  return { kind: 'pod', pod, dueDate, dateLabel: shortDateLabel(dueDate), requirementKey, ...state, done: false, actionable: state.status !== 'future' };
+}
+
+function buildMedicalRecordDischargeCell(patient, podCells, referenceDate, completions) {
+  const dischargeDate = patient.actualDischargeDate || patient.plannedDischargeDate || '';
+  if (!dischargeDate || !validDateKey(dischargeDate)) {
+    return { kind: 'discharge', requirementKey: '', dischargeDate: '', dateLabel: '未定', status: 'not-applicable', statusText: '—', overdueDays: 0, done: false, actionable: false, linkedPod: null, windowOpen: false };
+  }
+  const windowStart = shiftDateKey(dischargeDate, -1);
+  const explicitKey = dischargeRequirementKey(dischargeDate);
+  const explicitCompletion = completions.get(`${patient.id}|${explicitKey}`);
+  const windowPods = podCells.filter((cell) => cell.status !== 'not-applicable' && cell.dueDate >= windowStart && cell.dueDate <= dischargeDate && cell.dueDate <= referenceDate);
+  const completedWindowPod = windowPods.find((cell) => cell.done);
+  const latestAvailableWindowPod = [...windowPods].sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0];
+  const linkedCell = completedWindowPod || latestAvailableWindowPod || null;
+  const done = Boolean(explicitCompletion || completedWindowPod);
+  const requirementKey = explicitCompletion ? explicitKey : linkedCell ? linkedCell.requirementKey : explicitKey;
+  const windowOpen = referenceDate >= windowStart && referenceDate <= dischargeDate;
+  let state;
+  if (done) state = { status: 'done', overdueDays: 0, statusText: linkedCell && completedWindowPod ? `随POD${linkedCell.pod}` : '✓' };
+  else if (referenceDate < windowStart) state = { status: 'future', overdueDays: 0, statusText: '未到' };
+  else if (windowOpen) state = { status: linkedCell ? 'linked' : 'window', overdueDays: 0, statusText: linkedCell ? `随POD${linkedCell.pod}` : '待写' };
+  else state = medicalRecordStatus(dischargeDate, referenceDate);
+  return {
+    kind: linkedCell && !explicitCompletion ? 'pod' : 'discharge', requirementKey, dischargeDate, dueDate: linkedCell && !explicitCompletion ? linkedCell.dueDate : dischargeDate,
+    dateLabel: `${shortDateLabel(windowStart)}-${shortDateLabel(dischargeDate)}`, ...state, done,
+    actionable: done || state.status !== 'future', linkedPod: linkedCell ? linkedCell.pod : null, windowOpen,
+  };
+}
+
+function pendingMedicalRecordStatuses(status) {
+  return ['warning', 'overdue', 'severe', 'today', 'window', 'linked'].includes(status);
+}
+
+export function getMedicalRecordBoard(referenceDate = todayKey(), suppliedWorkspace, department = '') {
+  const workspace = suppliedWorkspace || getWorkspace();
+  const activeDepartment = department || (workspace.settings && workspace.settings.activeDepartment) || '';
+  const eligiblePatients = (workspace.patients || []).filter((patient) => patient.department === activeDepartment
+    && patient.surgeryDate && validDateKey(patient.surgeryDate) && patient.surgeryDate <= referenceDate);
+  const maxDisplayPod = eligiblePatients.reduce((maximum, patient) => {
+    const endDate = patient.actualDischargeDate || referenceDate;
+    const currentPod = Math.max(0, getPOD(patient.surgeryDate, endDate) || 0);
+    const displayThrough = patient.actualDischargeDate ? currentPod : nextMedicalRecordPod(currentPod);
+    return Math.max(maximum, displayThrough);
+  }, 9);
+  const podColumns = medicalRecordPodsThrough(maxDisplayPod);
+  const completions = completionLookup(workspace);
+  const pendingRequirements = new Map();
+  const todayRequirements = new Set();
+  const dischargeWindowRequirements = new Set();
+
+  const patients = eligiblePatients.map((patient) => {
+    const podCells = podColumns.map((pod) => buildMedicalRecordPodCell(patient, pod, referenceDate, completions));
+    const dischargeCell = buildMedicalRecordDischargeCell(patient, podCells, referenceDate, completions);
+    podCells.filter((cell) => !cell.done && pendingMedicalRecordStatuses(cell.status)).forEach((cell) => {
+      pendingRequirements.set(`${patient.id}|${cell.requirementKey}`, cell);
+      if (cell.status === 'today') todayRequirements.add(`${patient.id}|${cell.requirementKey}`);
+    });
+    if (!dischargeCell.done && pendingMedicalRecordStatuses(dischargeCell.status)) {
+      const key = `${patient.id}|${dischargeCell.requirementKey}`;
+      if (!pendingRequirements.has(key)) pendingRequirements.set(key, dischargeCell);
+      if (dischargeCell.windowOpen) dischargeWindowRequirements.add(key);
+    }
+    const patientPending = [...pendingRequirements.entries()].filter(([key]) => key.startsWith(`${patient.id}|`)).map(([, value]) => value);
+    return {
+      ...patient, currentPod: getPOD(patient.surgeryDate, referenceDate), podCells, dischargeCell,
+      discharged: Boolean(patient.actualDischargeDate), pendingCount: patientPending.length,
+      hasPending: patientPending.length > 0,
+      maxOverdueDays: patientPending.reduce((maximum, item) => Math.max(maximum, item.overdueDays || 0), 0),
+    };
+  }).sort((a, b) => b.maxOverdueDays - a.maxOverdueDays || Number(a.bed || 999999) - Number(b.bed || 999999) || `${a.name}`.localeCompare(`${b.name}`));
+
+  const pending = [...pendingRequirements.values()];
+  return {
+    referenceDate, department: activeDepartment, podColumns, patients,
+    summary: {
+      pending: pending.length,
+      severe: pending.filter((item) => item.status === 'severe').length,
+      overdue: pending.filter((item) => ['warning', 'overdue', 'severe'].includes(item.status)).length,
+      today: todayRequirements.size,
+      dischargeWindow: dischargeWindowRequirements.size,
+    },
+  };
+}
+
+export function setMedicalRecordRequirementDone(patientId, requirementKey, done, referenceDate = todayKey()) {
+  const workspace = getWorkspace();
+  const patient = workspace.patients.find((item) => item.id === patientId);
+  if (!patient) return { ok: false, error: '未找到患者' };
+  const board = getMedicalRecordBoard(referenceDate, workspace, patient.department);
+  const row = board.patients.find((item) => item.id === patientId);
+  if (!row) return { ok: false, error: '该患者当前没有可核对的病历节点' };
+  const requirement = [...row.podCells, row.dischargeCell].find((item) => item.requirementKey === requirementKey);
+  if (!requirement) return { ok: false, error: '病历节点已变化，请刷新后重新核对' };
+  if (done && !requirement.done && !requirement.actionable) return { ok: false, error: '未来病历节点不能提前完成' };
+  workspace.medicalRecordCompletions = (workspace.medicalRecordCompletions || []).filter((item) => !(item.patientId === patientId && item.requirementKey === requirementKey));
+  let completion = null;
+  if (done) {
+    completion = normalizeMedicalRecordCompletion({
+      patientId, requirementKey, kind: requirement.kind, pod: requirement.pod,
+      dueDate: requirement.dueDate, surgeryDate: patient.surgeryDate,
+      dischargeDate: requirement.dischargeDate || '', completedAt: new Date().toISOString(),
+    });
+    workspace.medicalRecordCompletions.unshift(completion);
+  }
+  saveWorkspace(workspace);
+  const refreshedRow = getMedicalRecordBoard(referenceDate, workspace, patient.department).patients.find((item) => item.id === patientId);
+  const stillSatisfied = Boolean(!done && requirement.kind === 'discharge' && refreshedRow && refreshedRow.dischargeCell.done);
+  return {
+    ok: true,
+    done: Boolean(done),
+    completion,
+    linkedDischarge: row.dischargeCell.requirementKey === requirementKey && row.dischargeCell.linkedPod !== null,
+    stillSatisfied,
+    remainingLinkedPod: stillSatisfied ? refreshedRow.dischargeCell.linkedPod : null,
+  };
 }
 
 // User-visible status is derived only from factual dates; legacy workflow stages are ignored.
@@ -1281,5 +1652,5 @@ export function maskPatient(patient, departmentWards = {}) {
 }
 
 export function workspaceStorageKeys() {
-  return { current: STORAGE_KEY, previous: PREVIOUS_STORAGE_KEY, legacy: LEGACY_STORAGE_KEY, migrationSnapshot: MIGRATION_SNAPSHOT_KEY, v4MigrationSnapshot: V4_MIGRATION_SNAPSHOT_KEY, restoreSnapshot: RESTORE_SNAPSHOT_KEY };
+  return { current: STORAGE_KEY, previous: PREVIOUS_STORAGE_KEY, legacy: LEGACY_STORAGE_KEY, migrationSnapshot: MIGRATION_SNAPSHOT_KEY, v4MigrationSnapshot: V4_MIGRATION_SNAPSHOT_KEY, preopMigrationSnapshot: PREOP_MIGRATION_SNAPSHOT_KEY, medicalRecordMigrationSnapshot: MEDICAL_RECORD_MIGRATION_SNAPSHOT_KEY, restoreSnapshot: RESTORE_SNAPSHOT_KEY };
 }

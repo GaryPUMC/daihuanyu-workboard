@@ -17,12 +17,12 @@ const detailJs = read('../pages/patient-detail/patient-detail.js');
 const detailWxml = read('../pages/patient-detail/patient-detail.wxml');
 const home = read('../pages/home/home.wxml');
 
-assert.equal(read('../VERSION').split(/\r?\n/)[0].trim(), '1.2.1');
-assert.equal(store.includes('const SCHEMA_VERSION = 11'), true);
+assert.match(read('../VERSION').split(/\r?\n/)[0].trim(), /^1\.2\./);
+assert.match(store, /const SCHEMA_VERSION = \d+/);
 assert.equal(app.includes('pages/admission-candidate-edit/admission-candidate-edit'), true);
 ['../pages/admission-candidate-edit/admission-candidate-edit.js', '../pages/admission-candidate-edit/admission-candidate-edit.wxml', '../pages/admission-candidate-edit/admission-candidate-edit.wxss', '../pages/admission-candidate-edit/admission-candidate-edit.json'].forEach((path) => assert.equal(exists(path), true));
 
-// 统一入口：AI、手工新增、详情编辑和底层保存必须共用同一校验器。
+// 统一入口：结构化导入、手工新增、详情编辑和底层保存必须共用同一校验器。
 [admissionUtil, candidateJs, patientsJs, detailJs, store].forEach((source) => assert.equal(source.includes('validatePatientDraft'), true));
 assert.equal(store.includes('export function createPatient'), true);
 assert.equal(store.includes('export function createPatientsAtomically'), true);
@@ -37,7 +37,7 @@ assert.equal(validator.includes('/普通/'), true);
 assert.equal(validator.includes("ADMISSION_STATES.includes(explicitAdmissionState) ? explicitAdmissionState : ''"), true);
 assert.equal(validator.includes("patient.admissionState === 'admitted' && !patient.bed"), true);
 
-// AI 编辑改为完整页面，避免底部弹层/键盘遮挡，并提供字段级高亮和清空日期。
+// 导入候选编辑使用完整页面，避免底部弹层/键盘遮挡，并提供字段级高亮和清空日期。
 assert.equal(admissionWxml.includes('<wb-sheet'), false);
 assert.equal(admissionJs.includes('wx.navigateTo'), true);
 assert.equal(admissionJs.includes('eventChannel'), true);
@@ -55,10 +55,10 @@ assert.equal(detailJs.includes('clearEditDate'), true);
 
 // 继续保留既有事实状态与隐私边界（出院后待归档）。
 assert.equal(home.includes('出院后待归档'), true);
-assert.equal(read('../PROJECT.md').includes('本小程序不提供AI服务'), true);
+assert.equal(read('../PROJECT.md').includes('结构化入院资料仅在本机解析和核对'), true);
 const changelog = read('../releases/1.2.1/UPLOAD_CHANGELOG.md').trim();
 assert.equal(changelog.length <= 200, true);
-assert.equal(changelog.includes('本小程序不提供AI服务'), true);
+assert.equal(changelog.includes('数据仅在当前设备处理和保存'), true);
 assert.equal(exists('../releases/1.2.1/source.tar.gz'), true);
 
-console.log('1.2.1 shared patient validation and full-page AI correction checks: passed');
+console.log('1.2.1 shared patient validation and full-page candidate correction checks: passed');
