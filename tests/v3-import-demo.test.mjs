@@ -51,7 +51,9 @@ assert.equal(store.getPatientStatus(store.getPatient(factualPatient.id), '2026-0
 // 日期校验和日间同日规则继续有效。
 const validationBase = { name: '脱敏校验患者', bed: '1', gender: '女', patientType: '普通', department: '整形外科', admissionState: 'admitted', surgeon: '脱敏主刀', allergyStatus: 'unknown' };
 assert.match(store.createPatient({ ...validationBase, id: 'validation-1', admissionDate: '2026-08-08', surgeryDate: '2026-08-07' }).error, /手术日期不能早于入院日期/);
-assert.match(store.createPatient({ ...validationBase, id: 'validation-day-empty', patientType: '日间', admissionDate: '2026-08-08', surgeryDate: '' }).error, /日间患者必须填写手术日期/);
+assert.equal(store.createPatient({ ...validationBase, id: 'validation-day-derived', patientType: '日间', admissionDate: '2026-08-08', surgeryDate: '', plannedDischargeDate: '' }).ok, true);
+assert.equal(store.getPatient('validation-day-derived').surgeryDate, '2026-08-08');
+assert.equal(store.getPatient('validation-day-derived').plannedDischargeDate, '2026-08-08');
 assert.equal(store.createPatient({ ...validationBase, id: 'validation-day', patientType: '日间', admissionDate: '2026-08-08', surgeryDate: '2026-08-08', plannedDischargeDate: '2026-08-08' }).ok, true);
 assert.equal(store.dischargePatient('validation-day', '2026-08-09').error, '日间患者的入院、手术与实际出院日期必须为同一天');
 

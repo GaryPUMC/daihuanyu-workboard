@@ -34,6 +34,23 @@ assert.equal(day.ok, true);
 assert.equal(day.value.department, '整形外科');
 assert.equal(day.value.ward, '日间病房');
 
+const derivedDayDates = draftTools.validatePatientDraft({
+  ...base, id: 'NEW-DAY-DERIVED', patientType: '日间', surgeryDate: '', plannedDischargeDate: '',
+}, context);
+assert.equal(derivedDayDates.ok, true);
+assert.equal(derivedDayDates.value.surgeryDate, base.admissionDate);
+assert.equal(derivedDayDates.value.plannedDischargeDate, base.admissionDate);
+assert.match(derivedDayDates.defaultedFields.surgeryDate, /按入院日期同步/);
+assert.match(derivedDayDates.defaultedFields.plannedDischargeDate, /按入院日期同步/);
+
+const conflictingDayDate = draftTools.validatePatientDraft({
+  ...base, id: 'NEW-DAY-CONFLICT', patientType: '日间', surgeryDate: '2026-09-03', plannedDischargeDate: '',
+}, context);
+assert.equal(conflictingDayDate.ok, false);
+assert.equal(conflictingDayDate.value.surgeryDate, '2026-09-03');
+assert.equal(conflictingDayDate.value.plannedDischargeDate, base.admissionDate);
+assert.match(conflictingDayDate.fieldErrors.surgeryDate, /必须同日/);
+
 const national = draftTools.validatePatientDraft({ ...base, id: 'NEW-NATIONAL', patientType: '国疗' }, context);
 assert.equal(national.ok, false);
 assert.equal(national.value.department, '');

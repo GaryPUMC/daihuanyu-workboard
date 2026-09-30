@@ -17,7 +17,7 @@ const sourceWorkspace = {
   schemaVersion: 12,
   settings: { activeDepartment: '整形外科', departments: ['整形外科'] },
   patients: [
-    { id: 'MR-001', name: '虚拟患者甲', bed: '12', gender: '男', patientType: '普通', department: '整形外科', admissionState: 'admitted', admissionDate: '2026-08-22', surgeryDate: '2026-08-23', surgeon: '虚拟主刀', allergyStatus: 'none' },
+    { id: 'MR-001', name: '虚拟患者甲', bed: '40', gender: '男', patientType: '普通', department: '整形外科', admissionState: 'admitted', admissionDate: '2026-08-22', surgeryDate: '2026-08-23', surgeon: '虚拟主刀', allergyStatus: 'none' },
     { id: 'MR-002', name: '虚拟患者乙', bed: '18', gender: '女', patientType: '普通', department: '整形外科', admissionState: 'admitted', admissionDate: '2026-08-29', surgeryDate: '2026-08-30', plannedDischargeDate: '2026-09-06', surgeon: '虚拟主刀', allergyStatus: 'none' },
     { id: 'MR-003', name: '虚拟患者丙', bed: '21', gender: '男', patientType: '国疗', department: '整形外科', admissionState: 'admitted', admissionDate: '2026-09-01', surgeryDate: '2026-09-02', surgeon: '虚拟主刀', allergyStatus: 'unknown' },
     { id: 'MR-004', name: '虚拟患者丁', bed: '25', gender: '女', patientType: '普通', department: '整形外科', admissionState: 'admitted', admissionDate: '2026-08-31', surgeryDate: '2026-09-01', plannedDischargeDate: '2026-09-06', surgeon: '虚拟主刀', allergyStatus: 'none' },
@@ -69,8 +69,9 @@ assert.equal(store.saveRound('MR-003', { date: REFERENCE_DATE, content: '脱敏�
 assert.equal(podCell('MR-003', 3).done, false, '查房记录不得自动完成病历节点');
 
 const initialBoard = board();
-assert.deepEqual(initialBoard.podColumns.slice(0, 6), [1, 2, 3, 6, 9, 12]);
+assert.deepEqual(initialBoard.podColumns.slice(0, 6), [15, 12, 9, 6, 3, 2], '最新的POD日期应从左到右倒序展示');
 assert.equal(initialBoard.podColumns.includes(15), true, '长期在院患者应继续显示 POD12、15 等后续节点');
+assert.deepEqual(initialBoard.patients.map((item) => item.id), ['MR-002', 'MR-003', 'MR-004', 'MR-005', 'MR-001'], '患者应按稳定床位顺序展示，不应按逾期程度排序');
 assert.equal(initialBoard.patients.some((item) => item.id === 'MR-006'), false, '没有手术日期不得生成POD表格');
 
 assert.equal(podCell('MR-001', 6).status, 'severe');
@@ -91,6 +92,7 @@ assert.equal(store.setMedicalRecordRequirementDone('MR-002', combinedDischarge.r
 assert.equal(podCell('MR-002', 6).done, true);
 assert.equal(patientRow('MR-002').dischargeCell.done, true);
 assert.equal(board().summary.pending, pendingBeforeCombined - 1, '重合节点不得重复计数');
+assert.deepEqual(board().patients.map((item) => item.id), initialBoard.patients.map((item) => item.id), '点击完成后不得因逾期程度变化自动重排患者');
 assert.equal(store.setMedicalRecordRequirementDone('MR-002', combinedDischarge.requirementKey, false, REFERENCE_DATE).ok, true);
 assert.equal(podCell('MR-002', 6).done, false, '再次点击应可撤销');
 

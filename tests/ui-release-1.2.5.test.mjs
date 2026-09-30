@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
 
-assert.equal(read('../VERSION').split(/\r?\n/)[0].trim(), '1.2.5');
+assert.equal(read('../VERSION').includes('1.2.5：'), true, 'VERSION 应保留 1.2.5 历史记录');
 assert.equal(read('../app.json').includes('pages/department-manager/department-manager'), true);
 
 const manager = read('../pages/department-manager/department-manager.wxml');

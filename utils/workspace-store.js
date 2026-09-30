@@ -1352,6 +1352,27 @@ function pendingMedicalRecordStatuses(status) {
   return ['warning', 'overdue', 'severe', 'today', 'window', 'linked'].includes(status);
 }
 
+function compareMedicalRecordPatients(a, b, wardOrder = []) {
+  const wardIndex = (ward) => {
+    const index = wardOrder.indexOf(ward);
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const wardDifference = wardIndex(a.ward) - wardIndex(b.ward);
+  if (wardDifference) return wardDifference;
+  const wardNameDifference = `${a.ward || ''}`.localeCompare(`${b.ward || ''}`);
+  if (wardNameDifference) return wardNameDifference;
+  const leftBed = `${a.bed || ''}`.trim();
+  const rightBed = `${b.bed || ''}`.trim();
+  const leftBedNumber = /^\d+(?:\.\d+)?$/.test(leftBed) ? Number(leftBed) : Number.MAX_SAFE_INTEGER;
+  const rightBedNumber = /^\d+(?:\.\d+)?$/.test(rightBed) ? Number(rightBed) : Number.MAX_SAFE_INTEGER;
+  const bedDifference = leftBedNumber - rightBedNumber;
+  if (bedDifference) return bedDifference;
+  const bedNameDifference = leftBed.localeCompare(rightBed);
+  if (bedNameDifference) return bedNameDifference;
+  const patientNameDifference = `${a.name || ''}`.localeCompare(`${b.name || ''}`);
+  return patientNameDifference || `${a.id || ''}`.localeCompare(`${b.id || ''}`);
+}
+
 export function getMedicalRecordBoard(referenceDate = todayKey(), suppliedWorkspace, department = '') {
   const workspace = suppliedWorkspace || getWorkspace();
   const activeDepartment = department || (workspace.settings && workspace.settings.activeDepartment) || '';
@@ -1363,7 +1384,9 @@ export function getMedicalRecordBoard(referenceDate = todayKey(), suppliedWorksp
     const displayThrough = patient.actualDischargeDate ? currentPod : nextMedicalRecordPod(currentPod);
     return Math.max(maximum, displayThrough);
   }, 9);
-  const podColumns = medicalRecordPodsThrough(maxDisplayPod);
+  // Keep the newest requirement nearest the sticky patient column so recent gaps
+  // remain visible without horizontal scrolling through the oldest POD dates.
+  const podColumns = medicalRecordPodsThrough(maxDisplayPod).reverse();
   const completions = completionLookup(workspace);
   const pendingRequirements = new Map();
   const todayRequirements = new Set();
@@ -1388,7 +1411,11 @@ export function getMedicalRecordBoard(referenceDate = todayKey(), suppliedWorksp
       hasPending: patientPending.length > 0,
       maxOverdueDays: patientPending.reduce((maximum, item) => Math.max(maximum, item.overdueDays || 0), 0),
     };
-  }).sort((a, b) => b.maxOverdueDays - a.maxOverdueDays || Number(a.bed || 999999) - Number(b.bed || 999999) || `${a.name}`.localeCompare(`${b.name}`));
+  });
+  const wardOrder = workspace.settings && workspace.settings.departmentWards
+    ? workspace.settings.departmentWards[activeDepartment] || []
+    : [];
+  patients.sort((a, b) => compareMedicalRecordPatients(a, b, wardOrder));
 
   const pending = [...pendingRequirements.values()];
   return {

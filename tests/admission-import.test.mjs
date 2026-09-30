@@ -71,12 +71,31 @@ const missingBedForAdmitted = importer.parseAdmissionImport(JSON.stringify({
 assert.equal(missingBedForAdmitted.summary.blocked, 1);
 assert.match(missingBedForAdmitted.candidates[0].errorText, /已入院患者必须填写床位/);
 
-const invalidDayAdmission = importer.parseAdmissionImport(JSON.stringify({
+const derivedDayAdmission = importer.parseAdmissionImport(JSON.stringify({
   schema: importer.ADMISSION_IMPORT_SCHEMA, department: '整形外科',
   patients: [{ id: 'DAY-001', name: '日间测试', bed: '8', age: '', gender: '女', admissionState: 'admitted', admissionDate: today, surgeon: '测试主刀', patientType: '日间', diagnosis: '', allergies: '', surgeryDate: today, plannedDischargeDate: '', surgeryName: '', managedByDaihuanyu: true }],
 }), options);
-assert.equal(invalidDayAdmission.summary.blocked, 1);
-assert.match(invalidDayAdmission.candidates[0].errorText, /日间患者必须填写计划出院日期/);
+assert.equal(derivedDayAdmission.summary.ready, 1);
+assert.equal(derivedDayAdmission.candidates[0].patient.surgeryDate, today);
+assert.equal(derivedDayAdmission.candidates[0].patient.plannedDischargeDate, today);
+assert.match(derivedDayAdmission.candidates[0].warningText, /计划出院日期已按入院日期同步/);
+
+const conflictingDayAdmission = importer.parseAdmissionImport(JSON.stringify({
+  schema: importer.ADMISSION_IMPORT_SCHEMA, department: '整形外科',
+  patients: [{ id: 'DAY-002', name: '日间冲突测试', bed: '9', age: '', gender: '男', admissionState: 'admitted', admissionDate: today, surgeon: '测试主刀', patientType: '日间', diagnosis: '', allergies: '', surgeryDate: '2026-08-10', plannedDischargeDate: '', surgeryName: '', managedByDaihuanyu: true }],
+}), options);
+assert.equal(conflictingDayAdmission.summary.blocked, 1);
+assert.equal(conflictingDayAdmission.candidates[0].patient.surgeryDate, '2026-08-10');
+assert.equal(conflictingDayAdmission.candidates[0].patient.plannedDischargeDate, today);
+assert.match(conflictingDayAdmission.candidates[0].errorText, /入院与手术日期必须同日/);
+
+const conflictingDayDischarge = importer.parseAdmissionImport(JSON.stringify({
+  schema: importer.ADMISSION_IMPORT_SCHEMA, department: '整形外科',
+  patients: [{ id: 'DAY-003', name: '日间出院日期冲突测试', bed: '10', age: '', gender: '女', admissionState: 'admitted', admissionDate: today, surgeon: '测试主刀', patientType: '日间', diagnosis: '', allergies: '', surgeryDate: today, plannedDischargeDate: '2026-08-10', surgeryName: '', managedByDaihuanyu: true }],
+}), options);
+assert.equal(conflictingDayDischarge.summary.blocked, 1);
+assert.equal(conflictingDayDischarge.candidates[0].patient.plannedDischargeDate, '2026-08-10');
+assert.match(conflictingDayDischarge.candidates[0].errorText, /入院与计划出院日期必须同日/);
 
 const multiWardOptions = { ...options, departmentWards: { '整形外科': ['综合一', '综合二'] } };
 const missingWard = importer.parseAdmissionImport(JSON.stringify({

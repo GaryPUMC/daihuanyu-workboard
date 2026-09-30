@@ -58,6 +58,14 @@ export function preparePatientDraft(source = {}, context = {}) {
   const explicitAdmissionState = text(source.admissionState);
   const admissionState = ADMISSION_STATES.includes(explicitAdmissionState) ? explicitAdmissionState : '';
   const admissionDate = text(source.admissionDate || (admissionState === 'planned' ? source.plannedAdmissionDate : source.actualAdmissionDate));
+  const rawSurgeryDate = text(source.surgeryDate);
+  const rawPlannedDischargeDate = text(source.plannedDischargeDate || source.dischargeDate);
+  // 日间患者的三个计划日期是同一业务日期。界面会将手术和计划出院
+  // 显示为“入院同日”，因此草稿值也必须同步，避免出现“看似已填、校验仍为空”。
+  // 只补空值：结构化导入若明确给出冲突日期，后续校验仍会阻断并要求人工核对。
+  const dayAdmissionDate = patientType === '日间' && validDate(admissionDate) ? admissionDate : '';
+  const surgeryDate = rawSurgeryDate || dayAdmissionDate;
+  const plannedDischargeDate = rawPlannedDischargeDate || dayAdmissionDate;
   const value = {
     ...source,
     id: text(source.id),
@@ -73,8 +81,8 @@ export function preparePatientDraft(source = {}, context = {}) {
     diagnosis: text(source.diagnosis),
     allergyStatus,
     allergies: allergyStatus === 'none' ? '' : text(source.allergies),
-    surgeryDate: text(source.surgeryDate),
-    plannedDischargeDate: text(source.plannedDischargeDate || source.dischargeDate),
+    surgeryDate,
+    plannedDischargeDate,
     actualDischargeDate: text(source.actualDischargeDate),
     surgeryName: text(source.surgeryName),
     surgeon: text(source.surgeon),
@@ -83,6 +91,8 @@ export function preparePatientDraft(source = {}, context = {}) {
   const defaultedFields = {};
   if (!rawDepartment && department) defaultedFields.department = `已使用当前科室“${department}”`;
   if (!rawWard && ward) defaultedFields.ward = `已按患者类型使用“${ward}”`;
+  if (!rawSurgeryDate && surgeryDate) defaultedFields.surgeryDate = '日间患者手术日期已按入院日期同步';
+  if (!rawPlannedDischargeDate && plannedDischargeDate) defaultedFields.plannedDischargeDate = '日间患者计划出院日期已按入院日期同步';
   return { value, wards, defaultedFields };
 }
 
